@@ -11,8 +11,20 @@ const addressBody = z.object({
 export const createRestaurantSchema = z.object({
   restaurantName: z.string().min(2).max(100),
   description: z.string().max(1000).optional(),
-  logo: z.string().url().optional(),
-  bannerImages: z.array(z.string().url()).optional(),
+  logo: z
+    .union([
+      z.string().url(),
+      z.string().regex(/^data:image\/[a-zA-Z0-9+.-]+;base64,/),
+    ])
+    .optional(),
+  bannerImages: z
+    .array(
+      z.union([
+        z.string().url(),
+        z.string().regex(/^data:image\/[a-zA-Z0-9+.-]+;base64,/),
+      ]),
+    )
+    .optional(),
   phone: z.string().regex(/^[0-9]{10}$/).optional(),
   email: z.string().email().optional(),
   cuisines: z.array(z.string()).optional(),
@@ -26,6 +38,23 @@ export const createRestaurantSchema = z.object({
   packagingCharge: z.number().min(0).optional(),
   openingTime: z.string().optional(),
   closingTime: z.string().optional(),
+  weeklyHours: z
+    .array(
+      z.object({
+        day: z.string().min(1).max(12),
+        open: z.string().optional(),
+        close: z.string().optional(),
+        isClosed: z.boolean().optional(),
+      }),
+    )
+    .optional(),
+  bankAccountDetails: z
+    .object({
+      accountHolderName: z.string().optional(),
+      accountNumber: z.string().optional(),
+      ifscCode: z.string().optional(),
+    })
+    .optional(),
   supportsCOD: z.boolean().optional(),
   supportsOnlinePayment: z.boolean().optional(),
   gstNumber: z.string().optional(),
@@ -61,6 +90,11 @@ export const nearbyQuerySchema = z.object({
   radiusKm: z.coerce.number().min(0.5).max(50).optional(),
   page: z.coerce.number().int().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+export const reverseGeocodeQuerySchema = z.object({
+  lat: z.coerce.number().min(-90).max(90),
+  lng: z.coerce.number().min(-180).max(180),
 });
 
 export const searchQuerySchema = z.object({

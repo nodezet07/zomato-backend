@@ -16,6 +16,8 @@ import {
   searchRestaurants,
 } from "../services/restaurant.service.js";
 import { CacheKeys, cacheGetOrSet } from "../services/cache.service.js";
+import { reverseGeocode } from "../services/geocode.service.js";
+import { listRestaurantSupportTickets } from "../services/support.service.js";
 
 function paramId(value: string | string[]): string {
   return Array.isArray(value) ? value[0] : value;
@@ -360,6 +362,47 @@ export const approveRestaurantDev = async (
     restaurant.isOpen = true;
     await restaurant.save();
     sendSuccess(res, "Restaurant approved (dev)", { restaurant });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /restaurants/:restaurantId/support-tickets
+export const getRestaurantSupportTickets = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const restaurantId = paramId(req.params.restaurantId);
+    const { page, limit, status, issueType } = req.query as {
+      page?: string;
+      limit?: string;
+      status?: string;
+      issueType?: string;
+    };
+    const result = await listRestaurantSupportTickets(restaurantId, req.userId!, {
+      page,
+      limit,
+      status,
+      issueType,
+    });
+    sendSuccess(res, "Support tickets fetched", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /restaurants/geocode/reverse?lat=&lng=
+export const reverseGeocodeHandler = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { lat, lng } = req.query as { lat: number; lng: number };
+    const address = await reverseGeocode(lat, lng);
+    sendSuccess(res, "Address resolved", { address });
   } catch (err) {
     next(err);
   }

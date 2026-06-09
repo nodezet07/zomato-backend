@@ -4,6 +4,7 @@ import Coupon from "../models/coupon.model.js";
 import Restaurant from "../models/restaurant.model.js";
 import { sendSuccess, sendError } from "../utils/apiResponse.js";
 import { CouponStatus } from "../types/enums.js";
+import { assertRestaurantOwner } from "../services/menu.service.js";
 
 function paramId(value: string | string[]): string {
   return Array.isArray(value) ? value[0] : value;
@@ -95,6 +96,111 @@ export const createCoupon = async (
     await coupon.save();
 
     sendSuccess(res, "Coupon created successfully", { coupon }, 201);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /coupons/restaurant — Restaurant owner creates offer for their store
+export const createRestaurantCoupon = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const {
+      restaurantId,
+      couponCode,
+      title,
+      description,
+      discountType,
+      discountValue,
+      minimumOrderAmount,
+      maximumDiscount,
+      usageLimit,
+      validFrom,
+      validTo,
+    } = req.body;
+
+    if (
+      !restaurantId ||
+      !couponCode ||
+      !title ||
+      !discountType ||
+      discountValue === undefined ||
+      !validFrom ||
+      !validTo
+    ) {
+      sendError(res, "Missing required fields", 400);
+      return;
+    }
+
+    await assertRestaurantOwner(req.userId!, restaurantId);
+
+    const code = String(couponCode).toUpperCase();
+    const existing = await Coupon.findOne({ couponCode: code });
+    if (existing) {
+      sendError(res, "Coupon code already exists", 400);
+      return;
+    }
+
+    const coupon = await Coupon.create({
+      couponCode: code,
+      title,
+      description,
+      discountType,
+      discountValue,
+      minimumOrderAmount: minimumOrderAmount ?? 0,
+      maximumDiscount,
+      usageLimit: usageLimit ?? 100,
+      validFrom: new Date(validFrom),
+      validTo: new Date(validTo),
+      applicableRestaurants: [restaurantId],
+      status: CouponStatus.ACTIVE,
+    });
+
+    sendSuccess(res, "Offer created for your restaurant", { coupon }, 201);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// DELETE /coupons/restaurant/:couponId — Restaurant owner (own offers only)
+export const deleteRestaurantCoupon = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const couponId = paramId(req.params.couponId);
+    const restaurantId = paramId(
+      (req.query.restaurantId as string) ??
+        (req.body as { restaurantId?: string })?.restaurantId ??
+        "",
+    );
+    if (!restaurantId) {
+      sendError(res, "restaurantId query param is required", 400);
+      return;
+    }
+
+    await assertRestaurantOwner(req.userId!, restaurantId);
+
+    const coupon = await Coupon.findById(couponId);
+    if (!coupon) {
+      sendError(res, "Coupon not found", 404);
+      return;
+    }
+
+    const ownsCoupon = coupon.applicableRestaurants.some(
+      (id) => id.toString() === restaurantId,
+    );
+    if (!ownsCoupon) {
+      sendError(res, "You can only delete offers for your restaurant", 403);
+      return;
+    }
+
+    await Coupon.findByIdAndDelete(couponId);
+    sendSuccess(res, "Offer deleted", {});
   } catch (err) {
     next(err);
   }

@@ -141,6 +141,6 @@ export const walletAddMoneyStub = async (
   res.status(501).json({
     success: false,
     message:
-      "Wallet top-up via Razorpay will be added in a follow-up. Use orders with WALLET for now.",
+      "Wallet is disabled in V1. Use COD or ONLINE for customer payments.",
   });
 };

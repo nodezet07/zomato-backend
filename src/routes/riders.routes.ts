@@ -28,6 +28,11 @@ import {
   getHistory,
   approveDev,
 } from "../controllers/riders.controller.js";
+import {
+  riderEarningsSummaryV1,
+  riderPayoutHistory,
+} from "../controllers/finance.controller.js";
+import { financeListQuerySchema } from "../validators/finance.validator.js";
 
 const router = Router();
 
@@ -60,6 +65,13 @@ router.patch(
 );
 router.get("/available-orders", requireRider, asyncHandler(getAvailableOrders));
 router.get("/earnings", requireRider, asyncHandler(getEarnings));
+router.get("/earnings/summary", requireRider, asyncHandler(riderEarningsSummaryV1));
+router.get(
+  "/payouts",
+  requireRider,
+  validate(financeListQuerySchema, "query"),
+  asyncHandler(riderPayoutHistory),
+);
 router.get("/history", requireRider, asyncHandler(getHistory));
 
 router.patch("/accept-order/:orderId", requireRider, asyncHandler(acceptOrderHandler));

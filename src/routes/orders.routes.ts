@@ -18,6 +18,7 @@ import {
   cancelOrderHandler,
   updateStatus,
   assignRider,
+  listAvailableRiders,
   verifyDeliveryOtpHandler,
   getActiveOrders,
   refundRequest,
@@ -62,6 +63,11 @@ router.patch(
   "/assign-rider/:orderId",
   validate(assignRiderSchema),
   asyncHandler(assignRider),
+);
+router.get(
+  "/riders/available",
+  requireRestaurantOwner,
+  asyncHandler(listAvailableRiders),
 );
 router.get("/:orderId", asyncHandler(getOrderById));
 

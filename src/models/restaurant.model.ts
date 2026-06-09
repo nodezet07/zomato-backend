@@ -3,6 +3,7 @@ import { RestaurantStatus } from "../types/enums.js";
 import {
   geoPointSchema,
   restaurantAddressSchema,
+  bankDetailsSchema,
 } from "./schemas/common.schemas.js";
 
 export interface IRestaurantDocument extends Document {
@@ -29,6 +30,12 @@ export interface IRestaurantDocument extends Document {
   fssaiLicense?: string;
   openingTime?: string;
   closingTime?: string;
+  weeklyHours?: Array<{
+    day: string;
+    open?: string;
+    close?: string;
+    isClosed?: boolean;
+  }>;
   isOpen: boolean;
   supportsCOD: boolean;
   supportsOnlinePayment: boolean;
@@ -37,6 +44,11 @@ export interface IRestaurantDocument extends Document {
   totalRatings: number;
   totalOrders: number;
   isDeleted: boolean;
+  bankAccountDetails?: {
+    accountHolderName?: string;
+    accountNumber?: string;
+    ifscCode?: string;
+  };
 }
 
 const restaurantSchema = new Schema<IRestaurantDocument>(
@@ -64,6 +76,14 @@ const restaurantSchema = new Schema<IRestaurantDocument>(
     fssaiLicense: String,
     openingTime: String,
     closingTime: String,
+    weeklyHours: [
+      {
+        day: { type: String, trim: true },
+        open: String,
+        close: String,
+        isClosed: { type: Boolean, default: false },
+      },
+    ],
     isOpen: { type: Boolean, default: false },
     supportsCOD: { type: Boolean, default: true },
     supportsOnlinePayment: { type: Boolean, default: true },
@@ -76,6 +96,7 @@ const restaurantSchema = new Schema<IRestaurantDocument>(
     totalRatings: { type: Number, default: 0 },
     totalOrders: { type: Number, default: 0 },
     isDeleted: { type: Boolean, default: false },
+    bankAccountDetails: { type: bankDetailsSchema, default: undefined },
   },
   { timestamps: true, collection: "restaurants" },
 );

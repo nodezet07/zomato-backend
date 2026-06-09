@@ -36,6 +36,25 @@ import {
   resolveSupportTicket,
   bannersStub,
 } from "../controllers/admin.controller.js";
+import {
+  adminFinanceSummary,
+  adminListRestaurantEarnings,
+  adminRestaurantEarningsDetail,
+  adminCreateRestaurantSettlement,
+  adminListRestaurantSettlements,
+  adminMarkRestaurantSettlementPaid,
+  adminListRiderEarnings,
+  adminCreateRiderPayout,
+  adminListRiderPayouts,
+  adminMarkRiderPayoutPaid,
+} from "../controllers/finance.controller.js";
+import {
+  createRestaurantSettlementSchema,
+  createRiderPayoutSchema,
+  financeListQuerySchema,
+  markRiderPayoutPaidSchema,
+  markSettlementPaidSchema,
+} from "../validators/finance.validator.js";
 
 const router = Router();
 
@@ -96,5 +115,52 @@ router.patch(
 );
 
 router.get("/banners", asyncHandler(bannersStub));
+
+// V1 Finance — manual restaurant settlements & rider payouts
+router.get("/finance/summary", asyncHandler(adminFinanceSummary));
+router.get(
+  "/finance/restaurants/earnings",
+  validate(financeListQuerySchema, "query"),
+  asyncHandler(adminListRestaurantEarnings),
+);
+router.get(
+  "/finance/restaurants/:restaurantId/earnings",
+  asyncHandler(adminRestaurantEarningsDetail),
+);
+router.post(
+  "/finance/restaurants/:restaurantId/settlements",
+  validate(createRestaurantSettlementSchema),
+  asyncHandler(adminCreateRestaurantSettlement),
+);
+router.get(
+  "/finance/restaurants/settlements",
+  validate(financeListQuerySchema, "query"),
+  asyncHandler(adminListRestaurantSettlements),
+);
+router.patch(
+  "/finance/restaurants/settlements/:settlementId/mark-paid",
+  validate(markSettlementPaidSchema),
+  asyncHandler(adminMarkRestaurantSettlementPaid),
+);
+router.get(
+  "/finance/riders/earnings",
+  validate(financeListQuerySchema, "query"),
+  asyncHandler(adminListRiderEarnings),
+);
+router.post(
+  "/finance/riders/:riderId/payouts",
+  validate(createRiderPayoutSchema),
+  asyncHandler(adminCreateRiderPayout),
+);
+router.get(
+  "/finance/riders/payouts",
+  validate(financeListQuerySchema, "query"),
+  asyncHandler(adminListRiderPayouts),
+);
+router.patch(
+  "/finance/riders/payouts/:payoutId/mark-paid",
+  validate(markRiderPayoutPaidSchema),
+  asyncHandler(adminMarkRiderPayoutPaid),
+);
 
 export default router;

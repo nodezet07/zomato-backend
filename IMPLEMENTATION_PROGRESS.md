@@ -726,6 +726,26 @@ PENDING
 
 ---
 
+## V1 Finance module (June 2026)
+
+Manual settlement architecture — see **`PHASE_V1_FINANCE.md`** for full API docs.
+
+| Rule | V1 behavior |
+|------|-------------|
+| Customer payments | Razorpay ONLINE + COD → platform |
+| Restaurant settlements | Admin manual batch + `mark-paid` with UTR |
+| Rider payouts | Admin weekly manual batch + `mark-paid` |
+| Wallet | **Disabled** on order create |
+| Automated payouts | **Not integrated** (RazorpayX later) |
+
+**New collections:** `restaurant_settlements`, `rider_payouts`, `orders.settlement` (embedded snapshot on DELIVERED).
+
+**Admin APIs:** `/admin/finance/*` — summary, earnings, create settlement/payout, history, mark paid.
+
+**Partner APIs:** `/restaurants/:id/earnings`, `/restaurants/:id/settlements`, `/riders/earnings/summary`, `/riders/payouts`.
+
+---
+
 ## Today's additions (June 2026)
 
 Built on top of Phase 19 baseline:

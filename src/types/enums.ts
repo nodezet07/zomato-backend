@@ -165,3 +165,31 @@ export enum DevicePlatform {
   IOS = "ios",
   WEB = "web",
 }
+
+/** Per-order earning line — restaurant or rider */
+export enum OrderEarningStatus {
+  PENDING = "PENDING",
+  SETTLED = "SETTLED",
+  PAID = "PAID",
+}
+
+/** Admin restaurant settlement batch (manual bank transfer in V1) */
+export enum RestaurantSettlementStatus {
+  PENDING = "PENDING",
+  PROCESSING = "PROCESSING",
+  PAID = "PAID",
+  CANCELLED = "CANCELLED",
+}
+
+/** Admin rider payout batch (weekly manual cycle in V1) */
+export enum RiderPayoutStatus {
+  PENDING = "PENDING",
+  APPROVED = "APPROVED",
+  PAID = "PAID",
+  REJECTED = "REJECTED",
+}
+
+export enum SettlementCycle {
+  WEEKLY = "WEEKLY",
+  ON_DEMAND = "ON_DEMAND",
+}

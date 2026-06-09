@@ -5,7 +5,27 @@ import {
   PaymentMethod,
   PaymentStatus,
 } from "../types/enums.js";
-import { orderItemSchema, timelineLogSchema } from "./schemas/common.schemas.js";
+import {
+  orderItemSchema,
+  timelineLogSchema,
+  orderSettlementSchema,
+} from "./schemas/common.schemas.js";
+
+export interface IOrderSettlement {
+  recordedAt?: Date;
+  commissionRate: number;
+  commissionAmount: number;
+  restaurantGrossAmount: number;
+  restaurantNetPayable: number;
+  riderEarningAmount: number;
+  platformCustomerFee: number;
+  deliveryFeeCollected: number;
+  restaurantSettlementStatus: "PENDING" | "SETTLED" | "PAID";
+  riderPayoutStatus: "PENDING" | "PAID";
+  restaurantSettlementId?: mongoose.Types.ObjectId;
+  riderPayoutId?: mongoose.Types.ObjectId;
+  riderEarningCredited?: boolean;
+}
 
 export interface IOrderItem {
   menuItemId: Types.ObjectId;
@@ -57,6 +77,7 @@ export interface IOrderDocument extends Document {
   deliveryInstructions?: string;
   timelineLogs: Array<{ status: string; updatedBy: string; timestamp: Date }>;
   fraudFlags: string[];
+  settlement?: IOrderSettlement;
 }
 
 const orderSchema = new Schema<IOrderDocument>(
@@ -119,6 +140,7 @@ const orderSchema = new Schema<IOrderDocument>(
     deliveryInstructions: String,
     timelineLogs: [timelineLogSchema],
     fraudFlags: [String],
+    settlement: { type: orderSettlementSchema, default: undefined },
   },
   { timestamps: true, collection: "orders" },
 );

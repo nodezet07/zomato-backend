@@ -47,6 +47,8 @@ router.get(
           "riders",
           "rider_locations",
           "wallet_transactions",
+          "restaurant_settlements",
+          "rider_payouts",
           "coupons",
           "reviews",
           "notifications",

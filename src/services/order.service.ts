@@ -192,16 +192,13 @@ export async function createOrderFromCart(
 
   let walletDeduction = 0;
   if (input.paymentMethod === PaymentMethod.WALLET) {
-    if (user.walletBalance < cart.grandTotal) {
-      throw new AppError("Insufficient wallet balance", 400);
-    }
-    walletDeduction = cart.grandTotal;
-    user.walletBalance -= walletDeduction;
-    await user.save();
-  } else if (input.useWallet && user.walletBalance > 0) {
-    walletDeduction = Math.min(user.walletBalance, cart.grandTotal);
-    user.walletBalance -= walletDeduction;
-    await user.save();
+    throw new AppError(
+      "Wallet payments are disabled in V1. Use COD or ONLINE.",
+      400,
+    );
+  }
+  if (input.useWallet) {
+    throw new AppError("Wallet is disabled in V1.", 400);
   }
 
   const couponId = input.couponId ?? cart.appliedCouponId?.toString();
@@ -217,13 +214,9 @@ export async function createOrderFromCart(
   }));
 
   const isCod = input.paymentMethod === PaymentMethod.COD;
-  const isWalletFull =
-    input.paymentMethod === PaymentMethod.WALLET ||
-    walletDeduction >= cart.grandTotal;
   const isOnline = input.paymentMethod === PaymentMethod.ONLINE;
 
-  const initialStatus =
-    isCod || isWalletFull ? OrderStatus.CONFIRMED : OrderStatus.PENDING;
+  const initialStatus = isCod ? OrderStatus.CONFIRMED : OrderStatus.PENDING;
 
   if (couponId && !isOnline) {
     const coupon = await Coupon.findById(couponId);
@@ -233,12 +226,7 @@ export async function createOrderFromCart(
     }
   }
 
-  const paymentStatus =
-    isWalletFull || isCod
-      ? isCod
-        ? PaymentStatus.PENDING
-        : PaymentStatus.CAPTURED
-      : PaymentStatus.PENDING;
+  const paymentStatus = isCod ? PaymentStatus.PENDING : PaymentStatus.PENDING;
 
   const order = await Order.create({
     orderNumber: generateOrderNumber(),
@@ -383,6 +371,10 @@ export async function updateOrderStatus(
   }
 
   await order.save();
+  if (newStatus === OrderStatus.DELIVERED) {
+    const { recordOrderFinancialsOnDelivery } = await import("./finance.service.js");
+    await recordOrderFinancialsOnDelivery(order._id.toString());
+  }
   emitOrderStatusChange(order);
   return order;
 }
@@ -457,6 +449,8 @@ export async function verifyDeliveryOtp(
   }
   pushTimeline(order, OrderStatus.DELIVERED, userId);
   await order.save();
+  const { recordOrderFinancialsOnDelivery } = await import("./finance.service.js");
+  await recordOrderFinancialsOnDelivery(order._id.toString());
   emitOrderStatusChange(order);
   return order;
 }

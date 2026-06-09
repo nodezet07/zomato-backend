@@ -10,6 +10,7 @@ import {
   listRestaurantsQuerySchema,
   nearbyQuerySchema,
   searchQuerySchema,
+  reverseGeocodeQuerySchema,
 } from "../validators/restaurant.validator.js";
 import {
   createRestaurant,
@@ -23,7 +24,15 @@ import {
   updateRestaurantStatus,
   getRestaurantAnalytics,
   approveRestaurantDev,
+  reverseGeocodeHandler,
+  getRestaurantSupportTickets,
 } from "../controllers/restaurants.controller.js";
+import {
+  restaurantEarningsSummary,
+  restaurantSettlementHistory,
+} from "../controllers/finance.controller.js";
+import { requireRestaurantOwner } from "../middlewares/role.middleware.js";
+import { financeListQuerySchema } from "../validators/finance.validator.js";
 
 const router = Router();
 
@@ -58,6 +67,12 @@ router.post(
 );
 
 // Static paths before :restaurantId
+router.get(
+  "/geocode/reverse",
+  isAuth,
+  validate(reverseGeocodeQuerySchema, "query"),
+  asyncHandler(reverseGeocodeHandler),
+);
 router.patch(
   "/status/:restaurantId",
   isAuth,
@@ -68,6 +83,25 @@ router.get(
   "/analytics/:restaurantId",
   isAuth,
   asyncHandler(getRestaurantAnalytics),
+);
+router.get(
+  "/:restaurantId/support-tickets",
+  isAuth,
+  requireRestaurantOwner,
+  asyncHandler(getRestaurantSupportTickets),
+);
+router.get(
+  "/:restaurantId/earnings",
+  isAuth,
+  requireRestaurantOwner,
+  asyncHandler(restaurantEarningsSummary),
+);
+router.get(
+  "/:restaurantId/settlements",
+  isAuth,
+  requireRestaurantOwner,
+  validate(financeListQuerySchema, "query"),
+  asyncHandler(restaurantSettlementHistory),
 );
 router.patch(
   "/:restaurantId/approve-dev",

@@ -413,6 +413,84 @@ export const sendLoginOtp = async (req: AuthRequest, res: Response) => {
   await sendOtp(req, res);
 };
 
+// ─── Restaurant portal — mobile OTP (owner accounts) ─────────────
+export const restaurantSendOtp = async (req: AuthRequest, res: Response) => {
+  const mobile = normalizePhone(req.body.mobile || req.body.phone);
+  const user = await User.findOne({
+    mobile,
+    role: UserRole.RESTAURANT_OWNER,
+    isDeleted: false,
+  });
+  if (!user) {
+    sendError(res, "No restaurant partner account found for this mobile", 404);
+    return;
+  }
+  await sendLoginOtpHandler(user.email, res);
+};
+
+export const restaurantVerifyOtp = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const mobile = normalizePhone(req.body.mobile || req.body.phone);
+    const user = await User.findOne({
+      mobile,
+      role: UserRole.RESTAURANT_OWNER,
+      isDeleted: false,
+    });
+    if (!user) {
+      sendError(res, "No restaurant partner account found for this mobile", 404);
+      return;
+    }
+    req.body.email = user.email;
+    req.body.purpose = "login";
+    await verifyLoginOtp(req, res, next);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── Restaurant portal — email OTP (Gmail) ───────────────────────
+export const restaurantEmailSendOtp = async (req: AuthRequest, res: Response) => {
+  const email = normalizeEmail(req.body.email);
+  const user = await User.findOne({
+    email,
+    role: UserRole.RESTAURANT_OWNER,
+    isDeleted: false,
+  });
+  if (!user) {
+    sendError(res, "No restaurant partner account found for this email", 404);
+    return;
+  }
+  await sendLoginOtpHandler(email, res);
+};
+
+export const restaurantEmailVerifyOtp = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const email = normalizeEmail(req.body.email);
+    const user = await User.findOne({
+      email,
+      role: UserRole.RESTAURANT_OWNER,
+      isDeleted: false,
+    });
+    if (!user) {
+      sendError(res, "No restaurant partner account found for this email", 404);
+      return;
+    }
+    req.body.email = email;
+    req.body.purpose = "login";
+    await verifyLoginOtp(req, res, next);
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ─── Social login stub ───────────────────────────────────────────
 export const socialLoginStub = async (_req: AuthRequest, res: Response) => {
   sendError(

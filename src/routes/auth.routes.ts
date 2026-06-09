@@ -13,6 +13,10 @@ import {
   sendLoginOtp,
   verifySignupOtp,
   verifyLoginOtp,
+  restaurantSendOtp,
+  restaurantVerifyOtp,
+  restaurantEmailSendOtp,
+  restaurantEmailVerifyOtp,
   socialLoginStub,
 } from "../controllers/auth.controller.js";
 import isAuth from "../middlewares/auth.middleware.js";
@@ -25,6 +29,10 @@ import {
   refreshTokenSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  restaurantMobileSendOtpSchema,
+  restaurantMobileVerifyOtpSchema,
+  restaurantEmailSendOtpSchema,
+  restaurantEmailVerifyOtpSchema,
 } from "../validators/auth.validator.js";
 import {
   authStrictRateLimiter,
@@ -66,6 +74,29 @@ router.post("/signup/send-otp", otpRateLimiter, validate(sendOtpSchema), asyncHa
 router.post("/signup/verify-otp", validate(verifyOtpSchema), asyncHandler(verifySignupOtp));
 router.post("/login/send-otp", otpRateLimiter, validate(sendOtpSchema), asyncHandler(sendLoginOtp));
 router.post("/login/verify-otp", validate(verifyOtpSchema), asyncHandler(verifyLoginOtp));
+
+router.post(
+  "/restaurant/send-otp",
+  otpRateLimiter,
+  validate(restaurantMobileSendOtpSchema),
+  asyncHandler(restaurantSendOtp),
+);
+router.post(
+  "/restaurant/verify-otp",
+  validate(restaurantMobileVerifyOtpSchema),
+  asyncHandler(restaurantVerifyOtp),
+);
+router.post(
+  "/restaurant/send-email-otp",
+  otpRateLimiter,
+  validate(restaurantEmailSendOtpSchema),
+  asyncHandler(restaurantEmailSendOtp),
+);
+router.post(
+  "/restaurant/verify-email-otp",
+  validate(restaurantEmailVerifyOtpSchema),
+  asyncHandler(restaurantEmailVerifyOtp),
+);
 
 // Social login — Phase 3 stub
 router.post("/social/:provider", asyncHandler(socialLoginStub));

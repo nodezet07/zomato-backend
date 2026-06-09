@@ -140,3 +140,31 @@ export const nutritionalInfoSchema = new Schema(
   },
   { _id: false },
 );
+
+/** Snapshot recorded when order reaches DELIVERED (V1 finance module) */
+export const orderSettlementSchema = new Schema(
+  {
+    recordedAt: { type: Date },
+    commissionRate: { type: Number, default: 0 },
+    commissionAmount: { type: Number, default: 0 },
+    restaurantGrossAmount: { type: Number, default: 0 },
+    restaurantNetPayable: { type: Number, default: 0 },
+    riderEarningAmount: { type: Number, default: 0 },
+    platformCustomerFee: { type: Number, default: 0 },
+    deliveryFeeCollected: { type: Number, default: 0 },
+    restaurantSettlementStatus: {
+      type: String,
+      enum: ["PENDING", "SETTLED", "PAID"],
+      default: "PENDING",
+    },
+    riderPayoutStatus: {
+      type: String,
+      enum: ["PENDING", "PAID"],
+      default: "PENDING",
+    },
+    restaurantSettlementId: { type: Schema.Types.ObjectId, ref: "RestaurantSettlement" },
+    riderPayoutId: { type: Schema.Types.ObjectId, ref: "RiderPayout" },
+    riderEarningCredited: { type: Boolean, default: false },
+  },
+  { _id: false },
+);

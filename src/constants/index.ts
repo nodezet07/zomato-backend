@@ -9,3 +9,9 @@ export const MAX_PLATFORM_FEE = 25;
 
 /** Rider payout per completed delivery (Phase 10) */
 export const RIDER_EARNING_PER_DELIVERY = 40;
+
+/** Default platform commission on food subtotal when restaurant has no override */
+export const DEFAULT_RESTAURANT_COMMISSION_PERCENT = 15;
+
+/** V1: customer wallet disabled — use COD or ONLINE only */
+export const V1_WALLET_ENABLED = false;

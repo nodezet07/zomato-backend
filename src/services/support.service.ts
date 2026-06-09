@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import SupportTicket from "../models/supportTicket.model.js";
 import Order from "../models/order.model.js";
+import Restaurant from "../models/restaurant.model.js";
 import { AppError } from "../utils/AppError.js";
 import {
   OrderStatus,
@@ -81,6 +82,44 @@ export async function listCustomerTickets(
       .skip(skip)
       .limit(limit)
       .populate("orderId", "orderNumber orderStatus grandTotal")
+      .lean(),
+    SupportTicket.countDocuments(filter),
+  ]);
+
+  return { tickets, pagination: paginationMeta(total, page, limit) };
+}
+
+export async function listRestaurantSupportTickets(
+  restaurantId: string,
+  ownerUserId: string,
+  query: { page?: string; limit?: string; status?: string; issueType?: string },
+) {
+  const restaurant = await Restaurant.findById(restaurantId);
+  if (!restaurant) {
+    throw new AppError("Restaurant not found", 404);
+  }
+  if (restaurant.ownerId.toString() !== ownerUserId) {
+    throw new AppError("Not your restaurant", 403);
+  }
+
+  const orderIds = await Order.find({ restaurantId: restaurant._id }).distinct("_id");
+  if (orderIds.length === 0) {
+    const { page, limit } = getPagination(query.page, query.limit);
+    return { tickets: [], pagination: paginationMeta(0, page, limit) };
+  }
+
+  const { page, limit, skip } = getPagination(query.page, query.limit);
+  const filter: Record<string, unknown> = { orderId: { $in: orderIds } };
+  if (query.status) filter.status = query.status;
+  if (query.issueType) filter.issueType = query.issueType;
+
+  const [tickets, total] = await Promise.all([
+    SupportTicket.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate("customerId", "fullName email mobile")
+      .populate("orderId", "orderNumber orderStatus grandTotal refundAmount")
       .lean(),
     SupportTicket.countDocuments(filter),
   ]);

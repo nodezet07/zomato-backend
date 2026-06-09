@@ -381,14 +381,13 @@ export async function completeDelivery(userId: string, orderId: string) {
   pushTimeline(order, OrderStatus.DELIVERED, userId);
 
   rider.currentOrderId = undefined;
-  rider.totalDeliveries += 1;
-  rider.totalEarnings += RIDER_EARNING_PER_DELIVERY;
-  rider.todayEarnings += RIDER_EARNING_PER_DELIVERY;
   rider.availabilityStatus = rider.onlineStatus
     ? RiderAvailability.AVAILABLE
     : RiderAvailability.OFFLINE;
 
   await Promise.all([order.save(), rider.save()]);
+  const { recordOrderFinancialsOnDelivery } = await import("./finance.service.js");
+  await recordOrderFinancialsOnDelivery(orderId);
   await clearLiveRiderLocation(orderId);
   const populated = await getOrderOrFail(orderId);
   emitOrderStatusChange(populated);

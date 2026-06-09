@@ -16,8 +16,9 @@ import {
   requestRefund,
   ACTIVE_STATUSES,
 } from "../services/order.service.js";
-import { OrderStatus } from "../types/enums.js";
+import { OrderStatus, RiderAvailability, VerificationStatus } from "../types/enums.js";
 import Restaurant from "../models/restaurant.model.js";
+import Rider from "../models/rider.model.js";
 import { AppError } from "../utils/AppError.js";
 
 function paramId(value: string | string[]): string {
@@ -137,6 +138,42 @@ export const updateStatus = async (
       cancellationReason,
     );
     sendSuccess(res, "Order status updated", { order });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /orders/riders/available — restaurant assigns delivery partner
+export const listAvailableRiders = async (
+  _req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const riders = await Rider.find({
+      onlineStatus: true,
+      availabilityStatus: RiderAvailability.AVAILABLE,
+      verificationStatus: VerificationStatus.APPROVED,
+    })
+      .populate("userId", "fullName mobile")
+      .select("riderCode vehicleType averageRating userId")
+      .sort({ averageRating: -1 })
+      .lean();
+
+    const list = riders.map((r) => {
+      const user = r.userId as { _id?: { toString(): string }; fullName?: string; mobile?: string } | null;
+      return {
+        riderId: r._id.toString(),
+        userId: user?._id?.toString?.() ?? String(r.userId),
+        fullName: user?.fullName ?? "Rider",
+        mobile: user?.mobile,
+        riderCode: r.riderCode,
+        vehicleType: r.vehicleType,
+        averageRating: r.averageRating,
+      };
+    });
+
+    sendSuccess(res, "Available riders", { riders: list });
   } catch (err) {
     next(err);
   }

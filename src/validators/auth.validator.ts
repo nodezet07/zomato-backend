@@ -44,6 +44,34 @@ export const forgotPasswordSchema = z.object({
   email: z.string().email("Invalid email format"),
 });
 
+const mobileRequired = z
+  .string()
+  .regex(/^[0-9]{10}$/, "Mobile must be 10 digits");
+
+export const restaurantMobileSendOtpSchema = z.object({
+  mobile: mobileRequired.optional(),
+  phone: mobileRequired.optional(),
+}).refine((d) => Boolean(d.mobile || d.phone), {
+  message: "Mobile number is required",
+});
+
+export const restaurantMobileVerifyOtpSchema = z.object({
+  mobile: mobileRequired.optional(),
+  phone: mobileRequired.optional(),
+  otp: z.string().length(6, "OTP must be 6 digits"),
+}).refine((d) => Boolean(d.mobile || d.phone), {
+  message: "Mobile number is required",
+});
+
+export const restaurantEmailSendOtpSchema = z.object({
+  email: z.string().email("Invalid email format"),
+});
+
+export const restaurantEmailVerifyOtpSchema = z.object({
+  email: z.string().email("Invalid email format"),
+  otp: z.string().length(6, "OTP must be 6 digits"),
+});
+
 export const resetPasswordSchema = z.object({
   email: z.string().email("Invalid email format"),
   otp: z.string().length(6, "OTP must be 6 digits"),
