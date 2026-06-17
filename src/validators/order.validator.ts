@@ -13,6 +13,8 @@ export const createOrderSchema = z.object({
 export const updateOrderStatusSchema = z.object({
   status: z.nativeEnum(OrderStatus),
   cancellationReason: z.string().max(500).optional(),
+  /** Restaurant-set prep wait time in minutes when accepting (PENDING → CONFIRMED) */
+  estimatedPreparationTime: z.coerce.number().int().min(5).max(180).optional(),
 });
 
 export const cancelOrderSchema = z.object({

@@ -40,6 +40,32 @@ export const rejectOrderSchema = z.object({
   reason: z.string().max(300).optional(),
 });
 
+const imageOrUrl = z
+  .string()
+  .max(800_000)
+  .optional()
+  .refine(
+    (v) => !v || v.startsWith("data:image/") || /^https?:\/\//.test(v),
+    "Image must be a URL or data URI",
+  );
+
+export const updateRiderProfileSchema = z.object({
+  fullName: z.string().min(2).max(100).optional(),
+  mobile: z.string().regex(/^[0-9]{10}$/).optional(),
+  vehicleType: z.nativeEnum(VehicleType).optional(),
+  vehicleNumber: z.string().max(20).optional(),
+  drivingLicense: imageOrUrl,
+  aadhaarCard: imageOrUrl,
+  profileImage: imageOrUrl,
+  bankAccountDetails: z
+    .object({
+      accountHolderName: z.string().min(2).max(100).optional(),
+      accountNumber: z.string().min(8).max(20).optional(),
+      ifscCode: z.string().regex(/^[A-Z]{4}0[A-Z0-9]{6}$/i).optional(),
+    })
+    .optional(),
+});
+
 /** Logged-in user adding a rider profile (no new email/password) */
 export const onboardRiderSchema = z.object({
   vehicleType: z.nativeEnum(VehicleType).optional(),

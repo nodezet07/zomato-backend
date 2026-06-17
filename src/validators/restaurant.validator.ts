@@ -97,6 +97,16 @@ export const reverseGeocodeQuerySchema = z.object({
   lng: z.coerce.number().min(-180).max(180),
 });
 
+export const placesAutocompleteQuerySchema = z.object({
+  q: z.string().min(2).max(120),
+  lat: z.coerce.number().min(-90).max(90).optional(),
+  lng: z.coerce.number().min(-180).max(180).optional(),
+});
+
+export const placeIdParamSchema = z.object({
+  placeId: z.string().min(3).max(256),
+});
+
 export const searchQuerySchema = z.object({
   q: z.string().min(1).max(100),
   lat: z.coerce.number().min(-90).max(90).optional(),

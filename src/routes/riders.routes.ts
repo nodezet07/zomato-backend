@@ -11,28 +11,33 @@ import {
   riderLoginSchema,
   updateLocationSchema,
   updateRiderStatusSchema,
+  updateRiderProfileSchema,
   rejectOrderSchema,
 } from "../validators/rider.validator.js";
 import {
   register,
   login,
   getProfile,
+  updateProfile,
   updateStatus,
   updateLocation,
   getAvailableOrders,
   acceptOrderHandler,
   rejectOrderHandler,
   pickupOrderHandler,
+  startDeliveryHandler,
   completeDeliveryHandler,
   getEarnings,
   getHistory,
   approveDev,
+  uploadDocument,
 } from "../controllers/riders.controller.js";
 import {
   riderEarningsSummaryV1,
   riderPayoutHistory,
 } from "../controllers/finance.controller.js";
 import { financeListQuerySchema } from "../validators/finance.validator.js";
+import { imageUpload } from "../middlewares/upload.middleware.js";
 
 const router = Router();
 
@@ -51,6 +56,18 @@ router.post("/login", validate(riderLoginSchema), asyncHandler(login));
 router.use(isAuth);
 
 router.get("/me", requireRider, asyncHandler(getProfile));
+router.patch(
+  "/profile",
+  requireRider,
+  validate(updateRiderProfileSchema),
+  asyncHandler(updateProfile),
+);
+router.post(
+  "/upload-document",
+  requireRider,
+  imageUpload.single("file"),
+  asyncHandler(uploadDocument),
+);
 router.patch(
   "/status",
   requireRider,
@@ -82,6 +99,7 @@ router.patch(
   asyncHandler(rejectOrderHandler),
 );
 router.patch("/pickup-order/:orderId", requireRider, asyncHandler(pickupOrderHandler));
+router.patch("/start-delivery/:orderId", requireRider, asyncHandler(startDeliveryHandler));
 router.patch(
   "/complete-delivery/:orderId",
   requireRider,

@@ -10,6 +10,10 @@ export const SocketEvents = {
   NEW_ORDER: "new_order",
   ORDER_CANCELLED: "order_cancelled",
   ORDER_UPDATED: "order_updated",
+  /** Broadcast to online riders when order is ready for pickup */
+  DELIVERY_AVAILABLE: "delivery_available",
+  /** Broadcast when any rider accepts — dismiss pop on other devices */
+  DELIVERY_CLAIMED: "delivery_claimed",
 } as const;
 
 export type SocketEventName = (typeof SocketEvents)[keyof typeof SocketEvents];
@@ -20,6 +24,10 @@ export const ClientSocketEvents = {
   LEAVE_ORDER: "leave_order",
   JOIN_RESTAURANT: "join_restaurant",
   LEAVE_RESTAURANT: "leave_restaurant",
+  /** Rider went online — join `riders:online` broadcast room */
+  RIDER_ONLINE: "rider_online",
+  /** Rider went offline — leave broadcast room */
+  RIDER_OFFLINE: "rider_offline",
 } as const;
 
 export interface OrderSocketPayload {
@@ -30,8 +38,14 @@ export interface OrderSocketPayload {
   restaurantId: string;
   customerId: string;
   riderId?: string;
+  riderName?: string;
+  riderMobile?: string;
+  riderCode?: string;
   riderLocation?: { latitude: number; longitude: number };
   estimatedDeliveryTime?: string;
   timestamp: string;
+  restaurantName?: string;
+  grandTotal?: number;
+  acceptTimeoutSeconds?: number;
   [key: string]: unknown;
 }

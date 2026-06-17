@@ -15,6 +15,7 @@ import {
   getOrderById,
   getOrderHistory,
   trackOrder,
+  trackOrderRoute,
   cancelOrderHandler,
   updateStatus,
   assignRider,
@@ -49,6 +50,7 @@ router.get(
   asyncHandler(getRestaurantOrders),
 );
 router.get("/track/:orderId", asyncHandler(trackOrder));
+router.get("/track/:orderId/route", asyncHandler(trackOrderRoute));
 router.patch(
   "/cancel/:orderId",
   validate(cancelOrderSchema),

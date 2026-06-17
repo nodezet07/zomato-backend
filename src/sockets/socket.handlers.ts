@@ -84,12 +84,27 @@ export function registerSocketHandlers(io: SocketIOServer): void {
     socket.join(`user:${user.userId}`);
 
     if (user.role === UserRole.RIDER) {
-      const rider = await Rider.findOne({ userId: user.userId }).select("_id");
+      const rider = await Rider.findOne({ userId: user.userId }).select("_id onlineStatus");
       if (rider) {
         user.riderId = rider._id.toString();
         socket.join(`rider:${rider._id.toString()}`);
+        if (rider.onlineStatus) {
+          socket.join("riders:online");
+        }
       }
     }
+
+    socket.on(ClientSocketEvents.RIDER_ONLINE, () => {
+      if (user.role !== UserRole.RIDER) return;
+      socket.join("riders:online");
+      socket.emit("rider_online_ack", { online: true });
+    });
+
+    socket.on(ClientSocketEvents.RIDER_OFFLINE, () => {
+      if (user.role !== UserRole.RIDER) return;
+      socket.leave("riders:online");
+      socket.emit("rider_offline_ack", { online: false });
+    });
 
     socket.on(ClientSocketEvents.JOIN_ORDER, async (payload: { orderId?: string }) => {
       const orderId = payload?.orderId;

@@ -10,6 +10,9 @@ export const MAX_PLATFORM_FEE = 25;
 /** Rider payout per completed delivery (Phase 10) */
 export const RIDER_EARNING_PER_DELIVERY = 40;
 
+/** Seconds riders have to accept from in-app pop before it auto-dismisses */
+export const RIDER_ORDER_ACCEPT_TIMEOUT_SECONDS = 45;
+
 /** Default platform commission on food subtotal when restaurant has no override */
 export const DEFAULT_RESTAURANT_COMMISSION_PERCENT = 15;
 

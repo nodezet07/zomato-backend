@@ -19,8 +19,6 @@ import {
 } from "./razorpay.service.js";
 import { env } from "../config/env.js";
 import { idString } from "./order.service.js";
-import { broadcastOrderEvent, emitOrderStatusChange } from "./socket.service.js";
-import { SocketEvents } from "../types/socket.events.js";
 
 export function getOrderPayableAmount(order: InstanceType<typeof Order>): number {
   return Math.max(
@@ -41,30 +39,22 @@ async function incrementCouponUsage(couponId?: string) {
 export async function confirmOrderAfterPayment(
   order: InstanceType<typeof Order>,
   payment: InstanceType<typeof Payment>,
-  updatedBy = "payment",
+  _updatedBy = "payment",
 ) {
-  if (order.orderStatus === OrderStatus.CONFIRMED) {
+  if (order.paymentStatus === PaymentStatus.CAPTURED) {
     return order;
   }
 
   if (order.orderStatus !== OrderStatus.PENDING) {
-    throw new AppError("Order cannot be confirmed in current state", 400);
+    throw new AppError("Order cannot be paid in current state", 400);
   }
 
-  order.orderStatus = OrderStatus.CONFIRMED;
+  // Payment captured — order stays PENDING until restaurant accepts.
   order.paymentStatus = PaymentStatus.CAPTURED;
   order.paymentId = payment._id;
-  order.acceptedAt = new Date();
-  order.timelineLogs.push({
-    status: OrderStatus.CONFIRMED,
-    updatedBy,
-    timestamp: new Date(),
-  });
 
   await incrementCouponUsage(order.appliedCouponId?.toString());
   await order.save();
-  broadcastOrderEvent(order, SocketEvents.ORDER_CONFIRMED);
-  emitOrderStatusChange(order);
   return order;
 }
 

@@ -17,6 +17,10 @@ import {
 } from "../services/restaurant.service.js";
 import { CacheKeys, cacheGetOrSet } from "../services/cache.service.js";
 import { reverseGeocode } from "../services/geocode.service.js";
+import {
+  googlePlacesAutocomplete,
+  googlePlaceDetails,
+} from "../services/google-maps.service.js";
 import { listRestaurantSupportTickets } from "../services/support.service.js";
 
 function paramId(value: string | string[]): string {
@@ -400,9 +404,55 @@ export const reverseGeocodeHandler = async (
   next: NextFunction,
 ) => {
   try {
-    const { lat, lng } = req.query as { lat: number; lng: number };
+    const lat = Number(req.query.lat);
+    const lng = Number(req.query.lng);
     const address = await reverseGeocode(lat, lng);
     sendSuccess(res, "Address resolved", { address });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /restaurants/places/autocomplete?q=&lat=&lng=
+export const placesAutocompleteHandler = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { q, lat, lng } = req.query as {
+      q: string;
+      lat?: string;
+      lng?: string;
+    };
+    const latitude = lat != null ? Number(lat) : undefined;
+    const longitude = lng != null ? Number(lng) : undefined;
+    const suggestions = await googlePlacesAutocomplete(q, {
+      latitude: Number.isFinite(latitude) ? latitude : undefined,
+      longitude: Number.isFinite(longitude) ? longitude : undefined,
+    });
+    sendSuccess(res, "Place suggestions", { suggestions });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /restaurants/places/details/:placeId
+export const placeDetailsHandler = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const placeId = Array.isArray(req.params.placeId)
+      ? req.params.placeId[0]
+      : req.params.placeId;
+    const details = await googlePlaceDetails(placeId);
+    if (!details) {
+      sendError(res, "Place not found", 404);
+      return;
+    }
+    sendSuccess(res, "Place details", { place: details });
   } catch (err) {
     next(err);
   }

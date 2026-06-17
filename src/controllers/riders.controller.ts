@@ -3,17 +3,21 @@ import { AuthRequest } from "../types/auth.types.js";
 import User from "../models/user.model.js";
 import { sendSuccess } from "../utils/apiResponse.js";
 import { AppError } from "../utils/AppError.js";
+import { uploadImageBuffer, isCloudinaryEnabled } from "../config/cloudinary.js";
 import { getPagination, paginationMeta } from "../helpers/pagination.js";
 import {
   registerRider,
   riderLogin,
   getRiderByUserId,
+  getRiderMe,
+  updateRiderProfile,
   updateRiderStatus,
   updateRiderLocation,
   listAvailableOrders,
   acceptOrder,
   rejectOrder,
   pickupOrder,
+  startDelivery,
   completeDelivery,
   getRiderEarnings,
   getRiderDeliveryHistory,
@@ -81,8 +85,22 @@ export const getProfile = async (
   next: NextFunction,
 ) => {
   try {
-    const rider = await getRiderByUserId(req.userId!);
-    sendSuccess(res, "Rider profile fetched", { rider });
+    const data = await getRiderMe(req.userId!);
+    sendSuccess(res, "Rider profile fetched", data);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PATCH /riders/profile
+export const updateProfile = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const data = await updateRiderProfile(req.userId!, req.body);
+    sendSuccess(res, "Rider profile updated", data);
   } catch (err) {
     next(err);
   }
@@ -177,7 +195,22 @@ export const pickupOrderHandler = async (
   try {
     const orderId = paramId(req.params.orderId);
     const order = await pickupOrder(req.userId!, orderId);
-    sendSuccess(res, "Order picked up — out for delivery", { order });
+    sendSuccess(res, "Order picked up from restaurant", { order });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PATCH /riders/start-delivery/:orderId
+export const startDeliveryHandler = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const orderId = paramId(req.params.orderId);
+    const order = await startDelivery(req.userId!, orderId);
+    sendSuccess(res, "Out for delivery", { order });
   } catch (err) {
     next(err);
   }
@@ -233,6 +266,42 @@ export const getHistory = async (
       orders,
       pagination: paginationMeta(total, page, limit),
     });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /riders/upload-document — multipart image → Cloudinary URL
+export const uploadDocument = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    if (!isCloudinaryEnabled()) {
+      throw new AppError("File upload is not configured on the server", 503);
+    }
+
+    const file = req.file;
+    const docType = String(req.body?.type ?? "profileImage");
+    const allowed = ["profileImage", "drivingLicense", "aadhaarCard"] as const;
+    if (!allowed.includes(docType as (typeof allowed)[number])) {
+      throw new AppError("Invalid document type", 400);
+    }
+    if (!file?.buffer) {
+      throw new AppError("No image file uploaded", 400);
+    }
+
+    const url = await uploadImageBuffer(
+      file.buffer,
+      `rider-kyc/${req.userId}`,
+      file.mimetype,
+    );
+    if (!url) {
+      throw new AppError("Failed to upload image", 500);
+    }
+
+    sendSuccess(res, "Document uploaded", { url, type: docType });
   } catch (err) {
     next(err);
   }
