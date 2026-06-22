@@ -11,9 +11,12 @@ import {
   nearbyQuerySchema,
   searchQuerySchema,
   reverseGeocodeQuerySchema,
+  placesAutocompleteQuerySchema,
+  placeIdParamSchema,
 } from "../validators/restaurant.validator.js";
 import {
   createRestaurant,
+  getMyRestaurant,
   getRestaurants,
   getRecommendedRestaurants,
   getNearbyRestaurants,
@@ -25,6 +28,8 @@ import {
   getRestaurantAnalytics,
   approveRestaurantDev,
   reverseGeocodeHandler,
+  placesAutocompleteHandler,
+  placeDetailsHandler,
   getRestaurantSupportTickets,
 } from "../controllers/restaurants.controller.js";
 import {
@@ -65,6 +70,12 @@ router.post(
   validate(createRestaurantSchema),
   asyncHandler(createRestaurant),
 );
+router.get(
+  "/mine",
+  isAuth,
+  requireRestaurantOwner,
+  asyncHandler(getMyRestaurant),
+);
 
 // Static paths before :restaurantId
 router.get(
@@ -72,6 +83,18 @@ router.get(
   isAuth,
   validate(reverseGeocodeQuerySchema, "query"),
   asyncHandler(reverseGeocodeHandler),
+);
+router.get(
+  "/places/autocomplete",
+  isAuth,
+  validate(placesAutocompleteQuerySchema, "query"),
+  asyncHandler(placesAutocompleteHandler),
+);
+router.get(
+  "/places/details/:placeId",
+  isAuth,
+  validate(placeIdParamSchema, "params"),
+  asyncHandler(placeDetailsHandler),
 );
 router.patch(
   "/status/:restaurantId",

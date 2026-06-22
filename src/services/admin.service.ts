@@ -1,4 +1,5 @@
 import AdminUser from "../models/adminUser.model.js";
+import mongoose from "mongoose";
 import User from "../models/user.model.js";
 import Restaurant from "../models/restaurant.model.js";
 import Rider from "../models/rider.model.js";
@@ -316,4 +317,85 @@ export async function listRefundTickets(query: {
   ]);
 
   return { tickets, pagination: paginationMeta(total, page, limit) };
+}
+
+export async function approveRefundTicket(
+  adminId: string,
+  ticketId: string,
+  input: { amount?: number; reason?: string; resolution?: string },
+) {
+  const ticket = await SupportTicket.findById(ticketId);
+  if (!ticket) {
+    throw new AppError("Refund ticket not found", 404);
+  }
+  if (ticket.issueType !== SupportIssueType.REFUND) {
+    throw new AppError("Not a refund ticket", 400);
+  }
+  if (![TicketStatus.OPEN, TicketStatus.IN_PROGRESS].includes(ticket.status)) {
+    throw new AppError("Ticket is not open for approval", 400);
+  }
+  if (!ticket.orderId) {
+    throw new AppError("Refund ticket has no linked order", 400);
+  }
+
+  const { initiateRefundByAdmin } = await import("./payment.service.js");
+  const { recordLedgerEntry } = await import("./platformConfig.service.js");
+
+  const result = await initiateRefundByAdmin(
+    ticket.orderId.toString(),
+    input.reason ?? "Admin approved refund",
+    input.amount,
+  );
+
+  const refundAmount =
+    input.amount ??
+    (result.order?.refundAmount as number | undefined) ??
+    (result.payment?.refundAmount as number | undefined) ??
+    0;
+
+  try {
+    await recordLedgerEntry({
+      entryType: "REFUND",
+      debitAccount: "PLATFORM",
+      creditAccount: "CUSTOMER",
+      creditEntityId: ticket.customerId.toString(),
+      amount: refundAmount,
+      orderId: ticket.orderId.toString(),
+      description: `Refund approved for ticket ${ticket.ticketNumber}`,
+      metadata: { ticketId, adminId },
+    });
+  } catch {
+    /* best-effort */
+  }
+
+  ticket.status = TicketStatus.RESOLVED;
+  ticket.resolution = input.resolution ?? "Refund approved and processed by admin";
+  ticket.assignedAdminId = new mongoose.Types.ObjectId(adminId);
+  await ticket.save();
+
+  return { ticket, refund: result };
+}
+
+export async function rejectRefundTicket(
+  adminId: string,
+  ticketId: string,
+  input: { reason: string; resolution?: string },
+) {
+  const ticket = await SupportTicket.findById(ticketId);
+  if (!ticket) {
+    throw new AppError("Refund ticket not found", 404);
+  }
+  if (ticket.issueType !== SupportIssueType.REFUND) {
+    throw new AppError("Not a refund ticket", 400);
+  }
+  if (![TicketStatus.OPEN, TicketStatus.IN_PROGRESS].includes(ticket.status)) {
+    throw new AppError("Ticket is not open for rejection", 400);
+  }
+
+  ticket.status = TicketStatus.CLOSED;
+  ticket.resolution = input.resolution ?? `Refund rejected: ${input.reason}`;
+  ticket.assignedAdminId = new mongoose.Types.ObjectId(adminId);
+  await ticket.save();
+
+  return { ticket };
 }

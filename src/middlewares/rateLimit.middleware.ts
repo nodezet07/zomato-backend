@@ -5,7 +5,7 @@ import config from "../config/config.js";
 const standardHeaders = { standardHeaders: true, legacyHeaders: false };
 
 function limiter(windowMs: number, max: number, message: string) {
-  if (config.NODE_ENV === "test") {
+  if (config.NODE_ENV === "test" || config.NODE_ENV === "development") {
     return (_req: Request, _res: Response, next: NextFunction) => next();
   }
   return rateLimit({

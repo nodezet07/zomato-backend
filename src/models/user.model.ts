@@ -95,8 +95,6 @@ const userSchema = new Schema<IUserDocument>(
   { timestamps: true, collection: "users" },
 );
 
-userSchema.index({ email: 1 });
-userSchema.index({ mobile: 1 });
 userSchema.index({ role: 1, accountStatus: 1 });
 userSchema.index({ createdAt: -1 });
 userSchema.index({ isDeleted: 1 });

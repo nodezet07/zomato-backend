@@ -19,13 +19,22 @@ async function sendEmail(to: string, subject: string, html: string) {
     logger.warn(`[DEV] Email not sent (no SMTP): ${to} — ${subject}`);
     return;
   }
-  const info = await transporter.sendMail({
-    from: config.EMAIL_FROM || `"Food App" <${config.SMTP_USER}>`,
-    to,
-    subject,
-    html,
-  });
-  logger.info(`Email sent to ${to}: ${info.messageId}`);
+  try {
+    const info = await transporter.sendMail({
+      from: config.EMAIL_FROM || `"Food App" <${config.SMTP_USER}>`,
+      to,
+      subject,
+      html,
+    });
+    logger.info(`Email sent to ${to}: ${info.messageId}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(`Email failed to ${to}: ${message}`);
+    if (process.env.NODE_ENV !== "development") {
+      throw error;
+    }
+    logger.warn(`[DEV] Continuing without email — OTP is in API response / server logs`);
+  }
 }
 
 export const sendSignupOtpEmail = async (to: string, otp: string) => {

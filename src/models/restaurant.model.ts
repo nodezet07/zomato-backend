@@ -26,6 +26,7 @@ export interface IRestaurantDocument extends Document {
   minimumOrderAmount: number;
   packagingCharge: number;
   platformCommissionPercentage: number;
+  settlementCycle?: string;
   gstNumber?: string;
   fssaiLicense?: string;
   openingTime?: string;
@@ -72,6 +73,7 @@ const restaurantSchema = new Schema<IRestaurantDocument>(
     minimumOrderAmount: { type: Number, default: 0 },
     packagingCharge: { type: Number, default: 0 },
     platformCommissionPercentage: { type: Number, default: 15 },
+    settlementCycle: { type: String, default: "WEEKLY" },
     gstNumber: String,
     fssaiLicense: String,
     openingTime: String,
@@ -104,7 +106,6 @@ const restaurantSchema = new Schema<IRestaurantDocument>(
 restaurantSchema.index({ location: "2dsphere" });
 restaurantSchema.index({ ownerId: 1 });
 restaurantSchema.index({ restaurantStatus: 1, isOpen: 1 });
-restaurantSchema.index({ slug: 1 });
 restaurantSchema.index({ averageRating: -1 });
 
 const Restaurant: Model<IRestaurantDocument> = mongoose.model<IRestaurantDocument>(

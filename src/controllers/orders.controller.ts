@@ -107,6 +107,56 @@ export const trackOrder = async (
   }
 };
 
+// GET /orders/track/:orderId/route — road polyline for live map
+export const trackOrderRoute = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const orderId = paramId(req.params.orderId);
+    const order = await getOrderOrFail(orderId);
+    await assertOrderAccess(req, order);
+    const { googleRoutePolyline } = await import("../services/google-maps.service.js");
+    const { getLiveRiderLocation } = await import("../services/tracking.service.js");
+
+    const live = await getLiveRiderLocation(orderId);
+    const riderLoc = live
+      ? { latitude: live.latitude, longitude: live.longitude }
+      : order.riderLocation;
+    const customerLat = order.customerAddress?.latitude;
+    const customerLng = order.customerAddress?.longitude;
+    const restaurantDoc = order.restaurantId as { latitude?: number; longitude?: number } | undefined;
+
+    const customer =
+      Number.isFinite(customerLat) && Number.isFinite(customerLng)
+        ? { latitude: customerLat!, longitude: customerLng! }
+        : null;
+    const restaurant =
+      restaurantDoc?.latitude != null && restaurantDoc?.longitude != null
+        ? { latitude: restaurantDoc.latitude, longitude: restaurantDoc.longitude }
+        : null;
+
+    let path: Array<{ latitude: number; longitude: number }> | null = null;
+
+    if (riderLoc && customer && ["PICKED_UP", "ON_THE_WAY"].includes(order.orderStatus)) {
+      path = await googleRoutePolyline({ origin: riderLoc, destination: customer });
+    } else if (restaurant && customer) {
+      path = await googleRoutePolyline({
+        origin: restaurant,
+        destination: customer,
+        waypoints: riderLoc ? [riderLoc] : undefined,
+      });
+    } else if (restaurant && riderLoc) {
+      path = await googleRoutePolyline({ origin: restaurant, destination: riderLoc });
+    }
+
+    sendSuccess(res, "Route polyline", { path: path ?? [] });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // PATCH /orders/cancel/:orderId
 export const cancelOrderHandler = async (
   req: AuthRequest,
@@ -130,12 +180,13 @@ export const updateStatus = async (
 ) => {
   try {
     const orderId = paramId(req.params.orderId);
-    const { status, cancellationReason } = req.body;
+    const { status, cancellationReason, estimatedPreparationTime } = req.body;
     const order = await updateOrderStatus(
       req,
       orderId,
       status as OrderStatus,
       cancellationReason,
+      estimatedPreparationTime,
     );
     sendSuccess(res, "Order status updated", { order });
   } catch (err) {
@@ -276,6 +327,11 @@ export const getRestaurantOrders = async (
         .skip(skip)
         .limit(limit)
         .populate("customerId", "fullName mobile")
+        .populate({
+          path: "riderId",
+          select: "riderCode vehicleType userId",
+          populate: { path: "userId", select: "fullName mobile" },
+        })
         .lean(),
       Order.countDocuments(filter),
     ]);

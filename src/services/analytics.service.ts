@@ -384,3 +384,81 @@ export async function getRestaurantAnalytics(restaurantId: string) {
     ordersByDayLast30: ordersByDay,
   };
 }
+
+export async function getTaxReport(range: { from: Date; to: Date }) {
+  const match = {
+    orderStatus: OrderStatus.DELIVERED,
+    deliveredAt: { $gte: range.from, $lte: range.to },
+  };
+
+  const [summary, byDay, byRestaurant] = await Promise.all([
+    Order.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: null,
+          totalTax: { $sum: "$taxAmount" },
+          totalRevenue: { $sum: "$grandTotal" },
+          taxableSubtotal: { $sum: "$subtotal" },
+          orderCount: { $sum: 1 },
+        },
+      },
+    ]),
+    Order.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$deliveredAt" } },
+          taxCollected: { $sum: "$taxAmount" },
+          orders: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]),
+    Order.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: "$restaurantId",
+          taxCollected: { $sum: "$taxAmount" },
+          revenue: { $sum: "$grandTotal" },
+          orders: { $sum: 1 },
+        },
+      },
+      { $sort: { taxCollected: -1 } },
+      { $limit: 15 },
+      {
+        $lookup: {
+          from: "restaurants",
+          localField: "_id",
+          foreignField: "_id",
+          as: "restaurant",
+        },
+      },
+      {
+        $project: {
+          restaurantId: "$_id",
+          restaurantName: { $arrayElemAt: ["$restaurant.restaurantName", 0] },
+          taxCollected: 1,
+          revenue: 1,
+          orders: 1,
+        },
+      },
+    ]),
+  ]);
+
+  const s = summary[0];
+  return {
+    period: { from: range.from, to: range.to },
+    totalTaxCollected: Math.round((s?.totalTax ?? 0) * 100) / 100,
+    taxableSubtotal: Math.round((s?.taxableSubtotal ?? 0) * 100) / 100,
+    totalRevenue: s?.totalRevenue ?? 0,
+    deliveredOrders: s?.orderCount ?? 0,
+    effectiveTaxRate:
+      s?.taxableSubtotal > 0
+        ? Math.round(((s.totalTax / s.taxableSubtotal) * 100) * 100) / 100
+        : 0,
+    taxByDay: byDay,
+    taxByRestaurant: byRestaurant,
+  };
+}

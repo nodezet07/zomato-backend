@@ -4,6 +4,7 @@ import { createAdapter } from "@socket.io/redis-adapter";
 import { createClient } from "redis";
 import config from "./config.js";
 import logger from "./logger.js";
+import { getCorsOrigins } from "./security.js";
 import { isSocketRedisAdapterEnabled } from "./bullmq.js";
 import { registerSocketHandlers } from "../sockets/socket.handlers.js";
 import { setSocketServer } from "../services/socket.service.js";
@@ -14,11 +15,19 @@ let socketSubClient: ReturnType<typeof createClient> | null = null;
 export const initializeSocket = async (
   httpServer: HTTPServer,
 ): Promise<SocketIOServer> => {
+  const corsOrigins = getCorsOrigins();
   const io = new SocketIOServer(httpServer, {
     cors: {
-      origin: [config.FRONTEND_URL, config.MASTER_URL, config.API_URL].filter(
-        Boolean,
-      ),
+      origin:
+        corsOrigins === true
+          ? true
+          : [
+              ...corsOrigins,
+              "http://localhost",
+              "https://localhost",
+              "capacitor://localhost",
+              "http://localhost:5174",
+            ].filter(Boolean),
       methods: ["GET", "POST"],
       credentials: true,
     },

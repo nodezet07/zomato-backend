@@ -19,8 +19,6 @@ import {
 } from "./razorpay.service.js";
 import { env } from "../config/env.js";
 import { idString } from "./order.service.js";
-import { broadcastOrderEvent, emitOrderStatusChange } from "./socket.service.js";
-import { SocketEvents } from "../types/socket.events.js";
 
 export function getOrderPayableAmount(order: InstanceType<typeof Order>): number {
   return Math.max(
@@ -41,30 +39,22 @@ async function incrementCouponUsage(couponId?: string) {
 export async function confirmOrderAfterPayment(
   order: InstanceType<typeof Order>,
   payment: InstanceType<typeof Payment>,
-  updatedBy = "payment",
+  _updatedBy = "payment",
 ) {
-  if (order.orderStatus === OrderStatus.CONFIRMED) {
+  if (order.paymentStatus === PaymentStatus.CAPTURED) {
     return order;
   }
 
   if (order.orderStatus !== OrderStatus.PENDING) {
-    throw new AppError("Order cannot be confirmed in current state", 400);
+    throw new AppError("Order cannot be paid in current state", 400);
   }
 
-  order.orderStatus = OrderStatus.CONFIRMED;
+  // Payment captured — order stays PENDING until restaurant accepts.
   order.paymentStatus = PaymentStatus.CAPTURED;
   order.paymentId = payment._id;
-  order.acceptedAt = new Date();
-  order.timelineLogs.push({
-    status: OrderStatus.CONFIRMED,
-    updatedBy,
-    timestamp: new Date(),
-  });
 
   await incrementCouponUsage(order.appliedCouponId?.toString());
   await order.save();
-  broadcastOrderEvent(order, SocketEvents.ORDER_CONFIRMED);
-  emitOrderStatusChange(order);
   return order;
 }
 
@@ -373,6 +363,64 @@ export async function initiateRefund(
   }
 
   return { payment, refund };
+}
+
+/** Admin-initiated refund — skips customer ownership check */
+export async function initiateRefundByAdmin(
+  orderId: string,
+  reason?: string,
+  amount?: number,
+) {
+  const order = await Order.findById(orderId);
+  if (!order) {
+    throw new AppError("Order not found", 404);
+  }
+
+  const payment = await Payment.findOne({ orderId: order._id }).sort({ createdAt: -1 });
+  if (!payment) {
+    throw new AppError("No payment record for this order", 404);
+  }
+
+  if (order.paymentMethod === PaymentMethod.COD) {
+    order.paymentStatus = PaymentStatus.REFUNDED;
+    order.refundAmount = amount ?? order.grandTotal;
+    await order.save();
+    return { payment: null, order, cod: true };
+  }
+
+  if (payment.paymentStatus !== PaymentStatus.CAPTURED) {
+    throw new AppError("Only captured payments can be refunded", 400);
+  }
+  if (!payment.gatewayPaymentId) {
+    throw new AppError("No gateway payment id for refund", 400);
+  }
+
+  const refundAmount = amount ?? payment.amount;
+  if (refundAmount <= 0 || refundAmount > payment.amount) {
+    throw new AppError("Invalid refund amount", 400);
+  }
+
+  const refund = await createRazorpayRefund(
+    payment.gatewayPaymentId,
+    rupeesToPaise(refundAmount),
+    { reason: reason ?? "admin_approved" },
+  );
+
+  payment.refundAmount = refundAmount;
+  payment.refundReason = reason;
+  payment.paymentStatus = PaymentStatus.REFUNDED;
+  payment.refundedAt = new Date();
+  payment.gatewayResponse = {
+    ...(payment.gatewayResponse ?? {}),
+    refund,
+  };
+  await payment.save();
+
+  order.paymentStatus = PaymentStatus.REFUNDED;
+  order.refundAmount = refundAmount;
+  await order.save();
+
+  return { payment, refund, order };
 }
 
 /** Development-only: confirm ONLINE order without Razorpay checkout UI */

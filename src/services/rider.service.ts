@@ -11,12 +11,14 @@ import {
   RiderAvailability,
   UserRole,
   VerificationStatus,
+  VehicleType,
 } from "../types/enums.js";
 import { buildGeoPoint } from "./restaurant.service.js";
 import { idString, getOrderOrFail } from "./order.service.js";
 import { RIDER_EARNING_PER_DELIVERY } from "../constants/index.js";
 import {
   broadcastOrderEvent,
+  emitDeliveryClaimed,
   emitOrderStatusChange,
   emitRiderLocationUpdate,
 } from "./socket.service.js";
@@ -149,10 +151,7 @@ export async function registerRider(
     drivingLicense: input.drivingLicense,
     aadhaarCard: input.aadhaarCard,
     bankAccountDetails: input.bankAccountDetails,
-    verificationStatus:
-      process.env.NODE_ENV === "development"
-        ? VerificationStatus.APPROVED
-        : VerificationStatus.PENDING,
+    verificationStatus: VerificationStatus.APPROVED,
   });
 
   return { user, rider };
@@ -218,6 +217,63 @@ export async function updateRiderStatus(
   return rider;
 }
 
+export async function updateRiderProfile(
+  userId: string,
+  input: {
+    fullName?: string;
+    mobile?: string;
+    vehicleType?: VehicleType;
+    vehicleNumber?: string;
+    drivingLicense?: string;
+    aadhaarCard?: string;
+    profileImage?: string;
+    bankAccountDetails?: {
+      accountHolderName?: string;
+      accountNumber?: string;
+      ifscCode?: string;
+    };
+  },
+) {
+  const rider = await getRiderByUserId(userId);
+  const user = await User.findById(userId);
+  if (!user || user.isDeleted) {
+    throw new AppError("User not found", 404);
+  }
+
+  if (input.fullName !== undefined) user.fullName = input.fullName.trim();
+  if (input.mobile !== undefined) user.mobile = normalizePhone(input.mobile);
+
+  if (input.vehicleType !== undefined) rider.vehicleType = input.vehicleType;
+  if (input.vehicleNumber !== undefined) rider.vehicleNumber = input.vehicleNumber.trim();
+  if (input.drivingLicense !== undefined) rider.drivingLicense = input.drivingLicense;
+  if (input.aadhaarCard !== undefined) rider.aadhaarCard = input.aadhaarCard;
+  if (input.profileImage !== undefined) {
+    rider.profileImage = input.profileImage;
+    user.profileImage = input.profileImage;
+  }
+  if (input.bankAccountDetails !== undefined) {
+    rider.bankAccountDetails = {
+      ...(rider.bankAccountDetails ?? {}),
+      ...input.bankAccountDetails,
+      ...(input.bankAccountDetails.ifscCode
+        ? { ifscCode: input.bankAccountDetails.ifscCode.toUpperCase() }
+        : {}),
+    };
+  }
+
+  await Promise.all([user.save(), rider.save()]);
+  return { rider, user: user.getPublicProfile() };
+}
+
+export async function getRiderMe(userId: string) {
+  const rider = await getRiderByUserId(userId);
+  const user = await User.findById(userId).select("fullName email mobile profileImage role");
+  if (!user) {
+    throw new AppError("User not found", 404);
+  }
+  return { rider, user: user.getPublicProfile() };
+}
+
 export async function updateRiderLocation(
   userId: string,
   latitude: number,
@@ -255,7 +311,7 @@ export async function updateRiderLocation(
         speed,
         heading,
       });
-      emitRiderLocationUpdate(order, latitude, longitude);
+      emitRiderLocationUpdate(order, latitude, longitude, heading);
     }
   }
 
@@ -268,7 +324,7 @@ export async function listAvailableOrders() {
     $or: [{ riderId: { $exists: false } }, { riderId: null }],
   })
     .sort({ createdAt: 1 })
-    .populate("restaurantId", "restaurantName logo slug latitude longitude address")
+    .populate("restaurantId", "restaurantName logo slug latitude longitude address phone")
     .populate("customerId", "fullName mobile")
     .limit(50)
     .lean();
@@ -279,30 +335,64 @@ export async function acceptOrder(userId: string, orderId: string) {
   assertRiderApproved(rider);
   assertRiderOnline(rider);
 
-  if (rider.currentOrderId) {
+  const order = await Order.findOneAndUpdate(
+    {
+      _id: orderId,
+      orderStatus: OrderStatus.READY_FOR_PICKUP,
+      $or: [{ riderId: { $exists: false } }, { riderId: null }],
+    },
+    {
+      $set: {
+        riderId: rider._id,
+        orderStatus: OrderStatus.RIDER_ASSIGNED,
+      },
+      $push: {
+        timelineLogs: {
+          status: OrderStatus.RIDER_ASSIGNED,
+          updatedBy: userId,
+          timestamp: new Date(),
+        },
+      },
+    },
+    { new: true },
+  );
+
+  if (!order) {
+    throw new AppError("Order is not available or already assigned to another rider", 409);
+  }
+
+  const riderUpdated = await Rider.findOneAndUpdate(
+    {
+      _id: rider._id,
+      onlineStatus: true,
+      $or: [{ currentOrderId: { $exists: false } }, { currentOrderId: null }],
+    },
+    {
+      $set: {
+        currentOrderId: order._id,
+        availabilityStatus: RiderAvailability.ON_DELIVERY,
+      },
+    },
+    { new: true },
+  );
+
+  if (!riderUpdated) {
+    await Order.findByIdAndUpdate(orderId, {
+      $set: { orderStatus: OrderStatus.READY_FOR_PICKUP },
+      $unset: { riderId: 1 },
+      $push: {
+        timelineLogs: {
+          status: "ACCEPT_ROLLBACK",
+          updatedBy: userId,
+          timestamp: new Date(),
+        },
+      },
+    });
     throw new AppError("Complete your current delivery before accepting a new order", 400);
   }
 
-  const order = await Order.findById(orderId);
-  if (!order) {
-    throw new AppError("Order not found", 404);
-  }
-  if (order.orderStatus !== OrderStatus.READY_FOR_PICKUP) {
-    throw new AppError("Order is not ready for pickup", 400);
-  }
-  if (order.riderId) {
-    throw new AppError("Order already assigned to a rider", 400);
-  }
-
-  order.riderId = rider._id;
-  order.orderStatus = OrderStatus.RIDER_ASSIGNED;
-  pushTimeline(order, OrderStatus.RIDER_ASSIGNED, userId);
-
-  rider.currentOrderId = order._id;
-  rider.availabilityStatus = RiderAvailability.ON_DELIVERY;
-
-  await Promise.all([order.save(), rider.save()]);
   const populated = await getOrderOrFail(orderId);
+  emitDeliveryClaimed(populated._id.toString(), populated.orderNumber);
   broadcastOrderEvent(populated, SocketEvents.RIDER_ASSIGNED);
   return populated;
 }
@@ -351,6 +441,24 @@ export async function pickupOrder(userId: string, orderId: string) {
   order.orderStatus = OrderStatus.PICKED_UP;
   order.pickedUpAt = new Date();
   pushTimeline(order, OrderStatus.PICKED_UP, userId);
+
+  await order.save();
+  const populated = await getOrderOrFail(orderId);
+  emitOrderStatusChange(populated);
+  return populated;
+}
+
+export async function startDelivery(userId: string, orderId: string) {
+  const rider = await getRiderByUserId(userId);
+  const order = await Order.findById(orderId);
+  if (!order) {
+    throw new AppError("Order not found", 404);
+  }
+  assertRiderOwnsOrder(rider, order);
+
+  if (order.orderStatus !== OrderStatus.PICKED_UP) {
+    throw new AppError("Mark pickup from restaurant before starting delivery", 400);
+  }
 
   order.orderStatus = OrderStatus.ON_THE_WAY;
   pushTimeline(order, OrderStatus.ON_THE_WAY, userId);

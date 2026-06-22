@@ -17,3 +17,7 @@ export { default as Notification } from "./notification.model.js";
 export { default as SupportTicket } from "./supportTicket.model.js";
 export { default as AuditLog } from "./auditLog.model.js";
 export { default as AdminUser } from "./adminUser.model.js";
+export { default as CityZone } from "./cityZone.model.js";
+export { default as PlatformPolicy } from "./platformPolicy.model.js";
+export { default as LedgerEntry } from "./ledgerEntry.model.js";
+export { default as RiderWithdrawalRequest } from "./riderWithdrawalRequest.model.js";

@@ -15,7 +15,9 @@ export async function enqueueNotificationJob(
   job: NotificationJobPayload,
 ): Promise<void> {
   if (!processor) {
-    logger.warn("Notification processor not registered");
+    logger.warn("Notification processor not registered — running inline");
+    const { notifyUser } = await import("../services/notification.service.js");
+    await notifyUser(job);
     return;
   }
 

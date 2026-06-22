@@ -20,6 +20,7 @@ import { ensureRestaurantForCart, recalculateCart } from "./cart.service.js";
 import { AuthRequest } from "../types/auth.types.js";
 import {
   broadcastOrderEvent,
+  emitDeliveryClaimed,
   emitOrderStatusChange,
 } from "./socket.service.js";
 import { SocketEvents } from "../types/socket.events.js";
@@ -98,7 +99,7 @@ export function generateDeliveryOtp(): string {
 
 export async function getOrderOrFail(orderId: string) {
   const order = await Order.findById(orderId)
-    .populate("restaurantId", "restaurantName logo slug ownerId")
+    .populate("restaurantId", "restaurantName logo slug ownerId address phone latitude longitude")
     .populate("customerId", "fullName mobile email")
     .populate({
       path: "riderId",
@@ -124,10 +125,19 @@ export async function assertOrderAccess(
     return;
   }
 
-  if (role === UserRole.RIDER && order.riderId) {
+  if (role === UserRole.RIDER) {
     const rider = await Rider.findOne({ userId });
-    if (rider && idString(order.riderId) === rider._id.toString()) {
-      return;
+    if (rider) {
+      if (order.riderId && idString(order.riderId) === rider._id.toString()) {
+        return;
+      }
+      if (
+        order.orderStatus === OrderStatus.READY_FOR_PICKUP &&
+        !order.riderId &&
+        rider.onlineStatus
+      ) {
+        return;
+      }
     }
   }
 
@@ -213,10 +223,10 @@ export async function createOrderFromCart(
     total: line.total,
   }));
 
-  const isCod = input.paymentMethod === PaymentMethod.COD;
   const isOnline = input.paymentMethod === PaymentMethod.ONLINE;
 
-  const initialStatus = isCod ? OrderStatus.CONFIRMED : OrderStatus.PENDING;
+  // All new orders start PENDING — restaurant must accept before kitchen work begins.
+  const initialStatus = OrderStatus.PENDING;
 
   if (couponId && !isOnline) {
     const coupon = await Coupon.findById(couponId);
@@ -226,7 +236,7 @@ export async function createOrderFromCart(
     }
   }
 
-  const paymentStatus = isCod ? PaymentStatus.PENDING : PaymentStatus.PENDING;
+  const paymentStatus = PaymentStatus.PENDING;
 
   const order = await Order.create({
     orderNumber: generateOrderNumber(),
@@ -266,15 +276,7 @@ export async function createOrderFromCart(
     fraudFlags: [],
   });
 
-  if (initialStatus === OrderStatus.CONFIRMED) {
-    order.acceptedAt = new Date();
-    pushTimeline(order, OrderStatus.CONFIRMED, "system");
-    await order.save();
-    broadcastOrderEvent(order, SocketEvents.ORDER_CREATED);
-    broadcastOrderEvent(order, SocketEvents.ORDER_CONFIRMED);
-  } else {
-    broadcastOrderEvent(order, SocketEvents.ORDER_CREATED);
-  }
+  broadcastOrderEvent(order, SocketEvents.ORDER_CREATED);
 
   cart.set("items", []);
   cart.appliedCouponId = undefined;
@@ -291,6 +293,7 @@ export async function updateOrderStatus(
   orderId: string,
   newStatus: OrderStatus,
   cancellationReason?: string,
+  estimatedPreparationTime?: number,
 ) {
   const order = await getOrderOrFail(orderId);
   await assertOrderAccess(req, order);
@@ -347,7 +350,16 @@ export async function updateOrderStatus(
   pushTimeline(order, newStatus, req.userId!);
 
   const now = new Date();
-  if (newStatus === OrderStatus.CONFIRMED) order.acceptedAt = now;
+  if (newStatus === OrderStatus.CONFIRMED) {
+    order.acceptedAt = now;
+    if (estimatedPreparationTime != null) {
+      order.estimatedPreparationTime = estimatedPreparationTime;
+      const deliveryBufferMins = 20;
+      order.estimatedDeliveryTime = new Date(
+        now.getTime() + (estimatedPreparationTime + deliveryBufferMins) * 60 * 1000,
+      );
+    }
+  }
   if (newStatus === OrderStatus.PREPARING) order.preparedAt = now;
   if (newStatus === OrderStatus.PICKED_UP) order.pickedUpAt = now;
   if (newStatus === OrderStatus.DELIVERED) {
@@ -404,26 +416,71 @@ export async function assignRiderToOrder(
   orderId: string,
   riderUserId?: string,
 ) {
-  const order = await getOrderOrFail(orderId);
   const targetUserId = riderUserId ?? req.userId!;
   const rider = await Rider.findOne({ userId: targetUserId });
   if (!rider) {
     throw new AppError("Rider not found", 404);
   }
 
-  if (order.orderStatus !== OrderStatus.READY_FOR_PICKUP) {
-    throw new AppError("Order is not ready for rider assignment", 400);
+  const order = await Order.findOneAndUpdate(
+    {
+      _id: orderId,
+      orderStatus: OrderStatus.READY_FOR_PICKUP,
+      $or: [{ riderId: { $exists: false } }, { riderId: null }],
+    },
+    {
+      $set: {
+        riderId: rider._id,
+        orderStatus: OrderStatus.RIDER_ASSIGNED,
+      },
+      $push: {
+        timelineLogs: {
+          status: OrderStatus.RIDER_ASSIGNED,
+          updatedBy: req.userId!,
+          timestamp: new Date(),
+        },
+      },
+    },
+    { new: true },
+  );
+
+  if (!order) {
+    throw new AppError("Order is not available or already assigned to another rider", 409);
   }
 
-  order.riderId = rider._id;
-  order.orderStatus = OrderStatus.RIDER_ASSIGNED;
-  pushTimeline(order, OrderStatus.RIDER_ASSIGNED, req.userId!);
+  const riderUpdated = await Rider.findOneAndUpdate(
+    {
+      _id: rider._id,
+      $or: [{ currentOrderId: { $exists: false } }, { currentOrderId: null }],
+    },
+    {
+      $set: {
+        currentOrderId: order._id,
+        availabilityStatus: RiderAvailability.ON_DELIVERY,
+      },
+    },
+    { new: true },
+  );
 
-  rider.currentOrderId = order._id;
-  rider.availabilityStatus = RiderAvailability.ON_DELIVERY;
-  await Promise.all([order.save(), rider.save()]);
-  broadcastOrderEvent(order, SocketEvents.RIDER_ASSIGNED);
-  return order;
+  if (!riderUpdated) {
+    await Order.findByIdAndUpdate(orderId, {
+      $set: { orderStatus: OrderStatus.READY_FOR_PICKUP },
+      $unset: { riderId: 1 },
+      $push: {
+        timelineLogs: {
+          status: "ASSIGN_ROLLBACK",
+          updatedBy: req.userId!,
+          timestamp: new Date(),
+        },
+      },
+    });
+    throw new AppError("Rider already has an active delivery", 400);
+  }
+
+  const populated = await getOrderOrFail(orderId);
+  emitDeliveryClaimed(populated._id.toString(), populated.orderNumber);
+  broadcastOrderEvent(populated, SocketEvents.RIDER_ASSIGNED);
+  return populated;
 }
 
 export async function verifyDeliveryOtp(
@@ -457,7 +514,52 @@ export async function verifyDeliveryOtp(
 
 export async function buildTrackPayload(order: InstanceType<typeof Order>) {
   const { getLiveRiderLocation } = await import("./tracking.service.js");
+  const { googleRouteEtaMinutes } = await import("./google-maps.service.js");
   const live = await getLiveRiderLocation(order._id.toString());
+
+  const riderDoc = order.riderId as
+    | {
+        _id?: mongoose.Types.ObjectId;
+        riderCode?: string;
+        vehicleType?: string;
+        userId?: { fullName?: string; mobile?: string } | mongoose.Types.ObjectId;
+      }
+    | undefined;
+  const riderUser =
+    riderDoc?.userId && typeof riderDoc.userId === "object" && "fullName" in riderDoc.userId
+      ? riderDoc.userId
+      : null;
+
+  const customerLat = order.customerAddress?.latitude;
+  const customerLng = order.customerAddress?.longitude;
+  const restaurantDoc = order.restaurantId as { latitude?: number; longitude?: number } | undefined;
+  const riderLoc = live
+    ? { latitude: live.latitude, longitude: live.longitude }
+    : order.riderLocation;
+
+  let etaMinutes: number | null = null;
+  if (
+    riderLoc &&
+    Number.isFinite(customerLat) &&
+    Number.isFinite(customerLng) &&
+    ["RIDER_ASSIGNED", "PICKED_UP", "ON_THE_WAY"].includes(order.orderStatus)
+  ) {
+    etaMinutes = await googleRouteEtaMinutes({
+      origin: riderLoc,
+      destination: { latitude: customerLat!, longitude: customerLng! },
+    });
+  } else if (
+    restaurantDoc?.latitude != null &&
+    restaurantDoc?.longitude != null &&
+    Number.isFinite(customerLat) &&
+    Number.isFinite(customerLng) &&
+    ["CONFIRMED", "PREPARING", "READY_FOR_PICKUP"].includes(order.orderStatus)
+  ) {
+    etaMinutes = await googleRouteEtaMinutes({
+      origin: { latitude: restaurantDoc.latitude, longitude: restaurantDoc.longitude },
+      destination: { latitude: customerLat!, longitude: customerLng! },
+    });
+  }
 
   return {
     orderId: order._id,
@@ -466,12 +568,41 @@ export async function buildTrackPayload(order: InstanceType<typeof Order>) {
     paymentStatus: order.paymentStatus,
     restaurantId: order.restaurantId,
     riderId: order.riderId,
+    rider: riderDoc
+      ? {
+          _id: riderDoc._id?.toString(),
+          riderCode: riderDoc.riderCode,
+          vehicleType: riderDoc.vehicleType,
+          fullName: riderUser?.fullName ?? "Delivery Partner",
+          mobile: riderUser?.mobile ?? null,
+        }
+      : null,
     riderLocation: live
-      ? { latitude: live.latitude, longitude: live.longitude }
+      ? {
+          latitude: live.latitude,
+          longitude: live.longitude,
+          heading: live.heading,
+        }
       : order.riderLocation,
-    liveLocation: live,
+    liveLocation: live
+      ? {
+          latitude: live.latitude,
+          longitude: live.longitude,
+          heading: live.heading,
+          speed: live.speed,
+        }
+      : null,
+    restaurantLocation:
+      restaurantDoc?.latitude != null && restaurantDoc?.longitude != null
+        ? { latitude: restaurantDoc.latitude, longitude: restaurantDoc.longitude }
+        : null,
+    deliveryLocation:
+      Number.isFinite(customerLat) && Number.isFinite(customerLng)
+        ? { latitude: customerLat!, longitude: customerLng! }
+        : null,
     estimatedPreparationTime: order.estimatedPreparationTime,
     estimatedDeliveryTime: order.estimatedDeliveryTime,
+    etaMinutes,
     timelineLogs: order.timelineLogs,
     deliveredAt: order.deliveredAt,
   };

@@ -8,6 +8,8 @@ import {
   NotificationType,
   NotificationRedirect,
   DevicePlatform,
+  CustomerNotificationEvent,
+  OrderStatus,
 } from "../types/enums.js";
 import { orderNotificationCopy } from "./notification.templates.js";
 import { SocketEvents } from "../types/socket.events.js";
@@ -15,7 +17,11 @@ import { enqueueNotificationJob } from "../queues/notification.queue.js";
 import { enqueueEmailJob } from "../queues/email.queue.js";
 import { enqueueSmsJob } from "../queues/sms.queue.js";
 import { AppError } from "../utils/AppError.js";
-import { getFirebaseMessaging, isFirebaseEnabled } from "../config/firebase.js";
+import {
+  isExpoPushToken,
+  sendExpoPushNotification,
+  sendFcmPushNotification,
+} from "./push-notification.service.js";
 
 export type NotificationChannel = "in_app" | "email" | "push" | "sms";
 
@@ -37,6 +43,10 @@ export interface NotificationJobPayload {
   redirectId?: string;
   email?: string;
   mobile?: string;
+  /** Expo push data.type — e.g. order_update, new_order, delivery_available */
+  pushType?: string;
+  /** Android notification channel id for Expo push */
+  pushChannelId?: string;
 }
 
 export async function createInAppNotification(input: {
@@ -89,55 +99,87 @@ export async function sendPushNotification(
   const user = await User.findById(userId).select("deviceTokens");
   const tokens = user?.deviceTokens ?? [];
   if (tokens.length === 0) {
-    logger.debug(`[Push stub] no device tokens for user=${userId}`);
+    logger.debug(`[Push] no device tokens for user=${userId}`);
     return;
   }
 
-  const messaging = getFirebaseMessaging();
-  if (!isFirebaseEnabled() || !messaging) {
-    for (const dt of tokens) {
-      logger.info(
-        `[Push stub] platform=${dt.platform} token=${dt.token.slice(0, 12)}... title=${title}`,
-        data,
-      );
-    }
+  const expoTokens = tokens.map((t) => t.token).filter((t) => isExpoPushToken(t));
+  const fcmTokens = tokens.map((t) => t.token).filter((t) => !isExpoPushToken(t));
+
+  if (expoTokens.length === 0 && fcmTokens.length === 0) {
+    logger.debug(`[Push] no valid tokens for user=${userId}`);
     return;
   }
 
-  const resp = await messaging.sendEachForMulticast({
-    tokens: tokens.map((t) => t.token),
-    notification: { title, body },
-    data: data ?? {},
-  });
+  const pushType = data?.type ?? "notification";
+  const channelId =
+    data?.channelId ??
+    (pushType === "delivery_available"
+      ? "delivery"
+      : pushType === "new_order" ||
+          pushType === "order_update" ||
+          pushType.startsWith("customer.order_") ||
+          pushType.startsWith("customer.payment_")
+        ? "orders"
+        : "default");
 
-  // Clean up invalid tokens (unregistered, invalid, etc.)
-  const invalidIdxs: number[] = [];
-  resp.responses.forEach((r: { success: boolean; error?: unknown }, idx: number) => {
-    if (r.success) return;
-    const code = (r.error as { code?: string } | undefined)?.code;
-    if (
-      code === "messaging/registration-token-not-registered" ||
-      code === "messaging/invalid-registration-token" ||
-      code === "messaging/invalid-argument"
-    ) {
-      invalidIdxs.push(idx);
-    }
-  });
-
-  if (invalidIdxs.length > 0) {
-    const invalidTokens = invalidIdxs
-      .map((i) => tokens[i]?.token)
-      .filter(Boolean) as string[];
-    if (invalidTokens.length > 0) {
-      await User.updateOne(
-        { _id: userId },
-        { $pull: { deviceTokens: { token: { $in: invalidTokens } } } },
-      );
-    }
+  if (expoTokens.length > 0) {
+    await sendExpoPushNotification({
+      to: expoTokens,
+      title,
+      body,
+      data,
+      sound: "default",
+      priority: "high",
+      channelId,
+    });
   }
 
-  logger.info(
-    `Push sent user=${userId} ok=${resp.successCount} fail=${resp.failureCount}`,
+  if (fcmTokens.length > 0) {
+    await sendFcmPushNotification(fcmTokens, title, body, data, channelId);
+  }
+}
+
+/** Push + in-app alert for all online riders when a delivery becomes available */
+export async function notifyOnlineRidersDeliveryAvailable(input: {
+  orderId: string;
+  orderNumber: string;
+  restaurantName: string;
+  grandTotal?: number;
+}): Promise<void> {
+  const riders = await Rider.find({
+    onlineStatus: true,
+    currentOrderId: { $in: [null, undefined] },
+  })
+    .select("userId")
+    .lean();
+
+  if (riders.length === 0) return;
+
+  const message = `${input.restaurantName} · #${input.orderNumber}${
+    input.grandTotal ? ` · ₹${input.grandTotal}` : ""
+  }`;
+
+  await Promise.all(
+    riders.map(async (rider) => {
+      const userId = rider.userId.toString();
+      await createInAppNotification({
+        userId,
+        notificationType: NotificationType.ORDER,
+        title: "New delivery available",
+        message,
+        redirectType: NotificationRedirect.ORDER,
+        redirectId: input.orderId,
+      });
+      await sendPushNotification(userId, "New delivery available", message, {
+        type: "delivery_available",
+        channelId: "delivery",
+        orderId: input.orderId,
+        orderNumber: input.orderNumber,
+        redirectType: NotificationRedirect.ORDER,
+        redirectId: input.orderId,
+      });
+    }),
   );
 }
 
@@ -168,9 +210,15 @@ export async function notifyUser(job: NotificationJobPayload): Promise<void> {
   }
 
   if (channels.includes("push")) {
+    const pushType =
+      job.pushType ??
+      (job.notificationType === NotificationType.ORDER ? "order_update" : "notification");
     await sendPushNotification(job.userId, job.title, job.message, {
+      type: pushType,
+      channelId: job.pushChannelId ?? (pushType === "new_order" ? "orders" : "default"),
       redirectType: job.redirectType ?? "",
       redirectId: job.redirectId ?? "",
+      orderId: job.redirectId ?? "",
     });
   }
 }
@@ -204,7 +252,11 @@ export async function processNotificationJob(
       }
       break;
     case "send_push":
-      await sendPushNotification(job.userId, job.title, job.message);
+      await sendPushNotification(job.userId, job.title, job.message, {
+        type: "notification",
+        redirectType: job.redirectType ?? "",
+        redirectId: job.redirectId ?? "",
+      });
       break;
     case "notify_user":
     default:
@@ -236,9 +288,10 @@ export function queueNotifyUser(
 type OrderNotifyLike = {
   _id: mongoose.Types.ObjectId;
   orderNumber: string;
+  orderStatus?: string;
   restaurantId: mongoose.Types.ObjectId | { _id?: mongoose.Types.ObjectId };
   customerId: mongoose.Types.ObjectId | { _id?: mongoose.Types.ObjectId };
-  riderId?: mongoose.Types.ObjectId | { _id?: mongoose.Types.ObjectId };
+  riderId?: mongoose.Types.ObjectId | { _id?: mongoose.Types.ObjectId; userId?: { fullName?: string; mobile?: string } };
 };
 
 function refId(
@@ -257,6 +310,26 @@ function customerChannels(event: string): NotificationChannel[] {
   return ["in_app", "email", "push"];
 }
 
+function customerPushType(event: string): string {
+  switch (event) {
+    case SocketEvents.ORDER_CREATED:
+      return CustomerNotificationEvent.ORDER_PLACED;
+    case SocketEvents.ORDER_CONFIRMED:
+      return CustomerNotificationEvent.ORDER_CONFIRMED;
+    case SocketEvents.RIDER_ASSIGNED:
+      return CustomerNotificationEvent.RIDER_ASSIGNED;
+    case SocketEvents.ORDER_PICKED_UP:
+      return CustomerNotificationEvent.ORDER_PICKED_UP;
+    case SocketEvents.ORDER_DELIVERED:
+    case SocketEvents.ORDER_COMPLETED:
+      return CustomerNotificationEvent.ORDER_DELIVERED;
+    case SocketEvents.ORDER_CANCELLED:
+      return CustomerNotificationEvent.ORDER_CANCELLED;
+    default:
+      return "order_update";
+  }
+}
+
 export async function notifyOrderEvent(
   order: OrderNotifyLike,
   event: string,
@@ -269,15 +342,37 @@ export async function notifyOrderEvent(
   const orderId = order._id.toString();
   const customerId = refId(order.customerId);
 
-  queueNotifyUser({
-    userId: customerId,
-    notificationType: NotificationType.ORDER,
-    title: copy.title,
-    message: copy.message,
-    channels: customerChannels(event),
-    redirectType: NotificationRedirect.ORDER,
-    redirectId: orderId,
-  });
+  const shouldNotifyCustomer =
+    event !== SocketEvents.NEW_ORDER &&
+    !(
+      event === SocketEvents.ORDER_UPDATED &&
+      order.orderStatus === OrderStatus.PENDING
+    );
+
+  if (shouldNotifyCustomer) {
+    let message = copy.message;
+    if (event === SocketEvents.RIDER_ASSIGNED && order.riderId && typeof order.riderId === "object") {
+      const riderUser = "userId" in order.riderId ? order.riderId.userId : undefined;
+      if (riderUser?.fullName) {
+        message = `${riderUser.fullName} is delivering order ${order.orderNumber}.${
+          riderUser.mobile ? ` Call ${riderUser.mobile}.` : ""
+        }`;
+      }
+    }
+
+    void notifyUser({
+      jobType: "notify_user",
+      userId: customerId,
+      notificationType: NotificationType.ORDER,
+      title: copy.title,
+      message,
+      channels: customerChannels(event),
+      redirectType: NotificationRedirect.ORDER,
+      redirectId: orderId,
+      pushType: customerPushType(event),
+      pushChannelId: "orders",
+    });
+  }
 
   if (event === SocketEvents.ORDER_CREATED || event === SocketEvents.NEW_ORDER) {
     const restaurant = await Restaurant.findById(refId(order.restaurantId)).select(
@@ -296,6 +391,8 @@ export async function notifyOrderEvent(
         channels: ["in_app", "email", "push"],
         redirectType: NotificationRedirect.ORDER,
         redirectId: orderId,
+        pushType: "new_order",
+        pushChannelId: "orders",
       });
     }
   }
@@ -314,6 +411,8 @@ export async function notifyOrderEvent(
         channels: ["in_app", "push"],
         redirectType: NotificationRedirect.ORDER,
         redirectId: orderId,
+        pushType: "order_assigned",
+        pushChannelId: "delivery",
       });
     }
   }

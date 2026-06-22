@@ -44,8 +44,9 @@ const startServer = async () => {
 
     const port = Number(config.PORT) || 5000;
 
-    httpServer.listen(port, () => {
+    httpServer.listen(port, "0.0.0.0", () => {
       logger.info(`🚀 Server running on http://localhost:${port}`);
+      logger.info(`🌐 LAN access: http://0.0.0.0:${port} (use 10.0.2.2 from Android emulator)`);
       logger.info(`📚 API docs at http://localhost:${port}/api-docs`);
       logger.info(`💚 Health check at http://localhost:${port}/api/v1/health`);
     });

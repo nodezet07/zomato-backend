@@ -9,21 +9,24 @@ const seedAdmin = async () => {
 
   const email = process.env.ADMIN_EMAIL || "admin@foodapp.com";
   const password = process.env.ADMIN_PASSWORD || "Admin@123";
-  const existing = await AdminUser.findOne({ email });
 
-  if (existing) {
-    logger.info("Admin user already exists");
-    process.exit(0);
+  let admin = await AdminUser.findOne({ email });
+  if (!admin) {
+    admin = await AdminUser.create({
+      email,
+      password,
+      name: "Super Admin",
+      role: AdminRole.SUPER_ADMIN,
+    });
+    logger.info(`Admin seeded: ${email}`);
+  } else {
+    admin.password = password;
+    admin.role = AdminRole.SUPER_ADMIN;
+    admin.isActive = true;
+    await admin.save();
+    logger.info(`Admin updated: ${email}`);
   }
 
-  await AdminUser.create({
-    email,
-    password,
-    name: "Super Admin",
-    role: AdminRole.SUPER_ADMIN,
-  });
-
-  logger.info(`Admin seeded: ${email}`);
   process.exit(0);
 };
 

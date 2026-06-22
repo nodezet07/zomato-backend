@@ -139,6 +139,51 @@ export enum NotificationType {
   SYSTEM = "SYSTEM",
 }
 
+/** Customer app notification events */
+export enum CustomerNotificationEvent {
+  ORDER_PLACED = "customer.order_placed",
+  ORDER_CONFIRMED = "customer.order_confirmed",
+  RIDER_ASSIGNED = "customer.rider_assigned",
+  ORDER_PICKED_UP = "customer.order_picked_up",
+  ORDER_ON_THE_WAY = "customer.order_on_the_way",
+  ORDER_DELIVERED = "customer.order_delivered",
+  ORDER_CANCELLED = "customer.order_cancelled",
+  PAYMENT_SUCCESS = "customer.payment_success",
+  PAYMENT_FAILED = "customer.payment_failed",
+  REFUND_PROCESSED = "customer.refund_processed",
+  SUPPORT_REPLY = "customer.support_reply",
+  PROMO_AVAILABLE = "customer.promo_available",
+}
+
+/** Restaurant app notification events */
+export enum RestaurantNotificationEvent {
+  NEW_ORDER = "restaurant.new_order",
+  ORDER_CANCELLED = "restaurant.order_cancelled",
+  ORDER_CONFIRMED = "restaurant.order_confirmed",
+  ORDER_READY_FOR_PICKUP = "restaurant.order_ready_for_pickup",
+  RIDER_ASSIGNED = "restaurant.rider_assigned",
+  PAYOUT_RELEASED = "restaurant.payout_released",
+  PAYOUT_FAILED = "restaurant.payout_failed",
+  REVIEW_RECEIVED = "restaurant.review_received",
+  SUPPORT_TICKET_UPDATE = "restaurant.support_ticket_update",
+  SYSTEM_ALERT = "restaurant.system_alert",
+}
+
+/** Rider app notification events */
+export enum RiderNotificationEvent {
+  DELIVERY_AVAILABLE = "rider.delivery_available",
+  DELIVERY_CLAIMED = "rider.delivery_claimed",
+  DELIVERY_ASSIGNED = "rider.delivery_assigned",
+  DELIVERY_CANCELLED = "rider.delivery_cancelled",
+  DELIVERY_REMINDER = "rider.delivery_reminder",
+  EARNINGS_CREDITED = "rider.earnings_credited",
+  PAYOUT_RELEASED = "rider.payout_released",
+  PAYOUT_FAILED = "rider.payout_failed",
+  KYC_APPROVED = "rider.kyc_approved",
+  KYC_REJECTED = "rider.kyc_rejected",
+  ACCOUNT_STATUS_CHANGED = "rider.account_status_changed",
+}
+
 export enum NotificationRedirect {
   ORDER = "ORDER",
   RESTAURANT = "RESTAURANT",
@@ -190,6 +235,9 @@ export enum RiderPayoutStatus {
 }
 
 export enum SettlementCycle {
+  DAILY = "DAILY",
   WEEKLY = "WEEKLY",
+  BIWEEKLY = "BIWEEKLY",
+  MONTHLY = "MONTHLY",
   ON_DEMAND = "ON_DEMAND",
 }

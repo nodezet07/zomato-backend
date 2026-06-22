@@ -55,7 +55,6 @@ const restaurantSettlementSchema = new Schema<IRestaurantSettlementDocument>(
 
 restaurantSettlementSchema.index({ restaurantId: 1, createdAt: -1 });
 restaurantSettlementSchema.index({ status: 1, createdAt: -1 });
-restaurantSettlementSchema.index({ settlementNumber: 1 });
 
 const RestaurantSettlement: Model<IRestaurantSettlementDocument> =
   mongoose.model<IRestaurantSettlementDocument>(

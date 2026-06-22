@@ -422,6 +422,9 @@ async function upsertRestaurant(seed: SeedRestaurant, ownerId: mongoose.Types.Ob
     });
     logger.info("Created restaurant", { slug: seed.slug });
   } else {
+    restaurant.ownerId = ownerId;
+    restaurant.restaurantStatus = RestaurantStatus.APPROVED;
+    restaurant.isOpen = true;
     restaurant.logo = img(`logo-${seed.slug}`, 256, 256);
     restaurant.bannerImages = [img(`banner-${seed.slug}-1`, 1200, 800), img(`banner-${seed.slug}-2`, 1200, 800)];
     await restaurant.save();

@@ -13,7 +13,7 @@ export function orderNotificationCopy(
     case SocketEvents.ORDER_CREATED:
       return {
         title: "Order placed",
-        message: `Your order ${orderNumber} has been placed.`,
+        message: `Your order ${orderNumber} was placed. Waiting for the restaurant to accept.`,
       };
     case SocketEvents.NEW_ORDER:
       return {

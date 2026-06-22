@@ -15,6 +15,8 @@ import {
   listOrders,
   adminCancelOrder,
   listRefundTickets,
+  approveRefundTicket,
+  rejectRefundTicket,
 } from "../services/admin.service.js";
 import {
   listAllTickets,
@@ -22,7 +24,7 @@ import {
   addTicketReply,
   updateTicketAsAdmin,
 } from "../services/support.service.js";
-import { buildAuditContext, writeAuditLog } from "../services/audit.service.js";
+import { buildAuditContext, writeAuditLog, listAuditLogs } from "../services/audit.service.js";
 
 function paramId(value: string | string[]): string {
   return Array.isArray(value) ? value[0] : value;
@@ -290,6 +292,72 @@ export const getRefunds = async (
   }
 };
 
+// POST /admin/refunds/:ticketId/approve
+export const approveRefundHandler = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const result = await approveRefundTicket(
+      req.adminId!,
+      paramId(req.params.ticketId),
+      req.body,
+    );
+    await writeAuditLog(buildAuditContext(req), {
+      module: "refund",
+      action: "REFUND_APPROVED",
+      entityId: paramId(req.params.ticketId),
+    });
+    sendSuccess(res, "Refund approved and processed", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const rejectRefundHandler = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const result = await rejectRefundTicket(
+      req.adminId!,
+      paramId(req.params.ticketId),
+      req.body,
+    );
+    await writeAuditLog(buildAuditContext(req), {
+      module: "refund",
+      action: "REFUND_REJECTED",
+      entityId: paramId(req.params.ticketId),
+      newData: { reason: req.body.reason },
+    });
+    sendSuccess(res, "Refund rejected", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getAuditLogs = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const result = await listAuditLogs({
+      page: req.query.page as string | undefined,
+      limit: req.query.limit as string | undefined,
+      module: req.query.module as string | undefined,
+      action: req.query.action as string | undefined,
+      from: req.query.from as string | undefined,
+      to: req.query.to as string | undefined,
+    });
+    sendSuccess(res, "Audit logs fetched", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 // GET /admin/support/tickets
 export const getSupportTickets = async (
   req: AuthRequest,
@@ -360,15 +428,4 @@ export const resolveSupportTicket = async (
   } catch (err) {
     next(err);
   }
-};
-
-// GET /admin/banners — stub
-export const bannersStub = async (
-  _req: AuthRequest,
-  res: Response,
-): Promise<void> => {
-  res.status(501).json({
-    success: false,
-    message: "Banner management is planned for a future release.",
-  });
 };

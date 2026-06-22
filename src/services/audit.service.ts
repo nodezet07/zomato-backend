@@ -56,3 +56,40 @@ export async function writeAuditLog(
     logger.warn("Audit log write failed", { error, action: input.action });
   }
 }
+
+export async function listAuditLogs(query: {
+  page?: string;
+  limit?: string;
+  module?: string;
+  action?: string;
+  from?: string;
+  to?: string;
+}) {
+  const page = parseInt(query.page ?? "1", 10) || 1;
+  const limit = Math.min(parseInt(query.limit ?? "20", 10) || 20, 100);
+  const skip = (page - 1) * limit;
+
+  const filter: Record<string, unknown> = {};
+  if (query.module) filter.module = query.module;
+  if (query.action) filter.action = query.action;
+  if (query.from || query.to) {
+    filter.createdAt = {};
+    if (query.from) (filter.createdAt as Record<string, Date>).$gte = new Date(query.from);
+    if (query.to) (filter.createdAt as Record<string, Date>).$lte = new Date(query.to);
+  }
+
+  const [logs, total] = await Promise.all([
+    AuditLog.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    AuditLog.countDocuments(filter),
+  ]);
+
+  return {
+    logs,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit) || 1,
+    },
+  };
+}

@@ -1,4 +1,5 @@
 import { AppError } from "../utils/AppError.js";
+import { googleReverseGeocode } from "./google-maps.service.js";
 
 type NominatimAddress = Record<string, string | undefined>;
 
@@ -52,21 +53,10 @@ function parseNominatimAddress(a: NominatimAddress): ParsedAddress {
   };
 }
 
-export async function reverseGeocode(
+async function nominatimReverseGeocode(
   latitude: number,
   longitude: number,
 ): Promise<ParsedAddress> {
-  if (
-    !Number.isFinite(latitude) ||
-    !Number.isFinite(longitude) ||
-    latitude < -90 ||
-    latitude > 90 ||
-    longitude < -180 ||
-    longitude > 180
-  ) {
-    throw new AppError("Invalid coordinates", 400);
-  }
-
   const url = new URL("https://nominatim.openstreetmap.org/reverse");
   url.searchParams.set("format", "json");
   url.searchParams.set("lat", String(latitude));
@@ -91,4 +81,25 @@ export async function reverseGeocode(
   }
 
   return parseNominatimAddress(data.address);
+}
+
+export async function reverseGeocode(
+  latitude: number,
+  longitude: number,
+): Promise<ParsedAddress> {
+  if (
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
+  ) {
+    throw new AppError("Invalid coordinates", 400);
+  }
+
+  const google = await googleReverseGeocode(latitude, longitude);
+  if (google) return google;
+
+  return nominatimReverseGeocode(latitude, longitude);
 }
