@@ -68,7 +68,13 @@ app.use(
 
           ? corsOrigins
 
-          : [config.FRONTEND_URL, config.MASTER_URL, config.API_URL].filter(Boolean),
+          : [
+              config.FRONTEND_URL,
+              config.MASTER_URL,
+              config.API_URL,
+              "http://localhost:5174",
+              "http://localhost:5175",
+            ].filter(Boolean),
 
     credentials: true,
 

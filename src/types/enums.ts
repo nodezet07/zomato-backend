@@ -235,6 +235,9 @@ export enum RiderPayoutStatus {
 }
 
 export enum SettlementCycle {
+  DAILY = "DAILY",
   WEEKLY = "WEEKLY",
+  BIWEEKLY = "BIWEEKLY",
+  MONTHLY = "MONTHLY",
   ON_DEMAND = "ON_DEMAND",
 }

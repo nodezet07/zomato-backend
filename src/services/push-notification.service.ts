@@ -1,6 +1,7 @@
 import { Expo, type ExpoPushMessage, type ExpoPushTicket } from "expo-server-sdk";
 import User from "../models/user.model.js";
 import logger from "../config/logger.js";
+import { getFirebaseMessaging } from "../config/firebase.js";
 
 const expo = new Expo();
 
@@ -60,6 +61,37 @@ export async function sendExpoPushNotification(payload: ExpoPushPayload): Promis
   }
 
   logger.info(`[Expo Push] Sent ${validTokens.length} notification(s)`);
+}
+
+/** FCM tokens from Capacitor / native Android & iOS apps */
+export async function sendFcmPushNotification(
+  tokens: string[],
+  title: string,
+  body: string,
+  data?: Record<string, string>,
+  channelId = "orders",
+): Promise<void> {
+  const messaging = getFirebaseMessaging();
+  if (!messaging || tokens.length === 0) return;
+
+  try {
+    const res = await messaging.sendEachForMulticast({
+      tokens,
+      notification: { title, body },
+      data: data ?? {},
+      android: { priority: "high", notification: { channelId } },
+    });
+    logger.info(`[FCM Push] Sent ${res.successCount}/${tokens.length} notification(s)`);
+    if (res.failureCount > 0) {
+      res.responses.forEach((r, i) => {
+        if (!r.success) {
+          logger.debug(`[FCM Push] token ${i} failed: ${r.error?.message}`);
+        }
+      });
+    }
+  } catch (error) {
+    logger.error(`[FCM Push] ${(error as Error).message}`);
+  }
 }
 
 export async function sendExpoPushToUser(

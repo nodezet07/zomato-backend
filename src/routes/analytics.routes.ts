@@ -7,6 +7,7 @@ import {
   users,
   delivery,
   summary,
+  tax,
 } from "../controllers/analytics.controller.js";
 
 const router = Router();
@@ -18,5 +19,6 @@ router.get("/sales", asyncHandler(sales));
 router.get("/orders", asyncHandler(orders));
 router.get("/users", asyncHandler(users));
 router.get("/delivery", asyncHandler(delivery));
+router.get("/tax", asyncHandler(tax));
 
 export default router;

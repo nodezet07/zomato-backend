@@ -20,6 +20,7 @@ import { AppError } from "../utils/AppError.js";
 import {
   isExpoPushToken,
   sendExpoPushNotification,
+  sendFcmPushNotification,
 } from "./push-notification.service.js";
 
 export type NotificationChannel = "in_app" | "email" | "push" | "sms";
@@ -103,14 +104,10 @@ export async function sendPushNotification(
   }
 
   const expoTokens = tokens.map((t) => t.token).filter((t) => isExpoPushToken(t));
-  const nonExpoCount = tokens.length - expoTokens.length;
+  const fcmTokens = tokens.map((t) => t.token).filter((t) => !isExpoPushToken(t));
 
-  if (expoTokens.length === 0) {
-    if (nonExpoCount > 0) {
-      logger.debug(
-        `[Push] skipped ${nonExpoCount} non-Expo token(s) for user=${userId} (Expo push only)`,
-      );
-    }
+  if (expoTokens.length === 0 && fcmTokens.length === 0) {
+    logger.debug(`[Push] no valid tokens for user=${userId}`);
     return;
   }
 
@@ -126,15 +123,21 @@ export async function sendPushNotification(
         ? "orders"
         : "default");
 
-  await sendExpoPushNotification({
-    to: expoTokens,
-    title,
-    body,
-    data,
-    sound: "default",
-    priority: "high",
-    channelId,
-  });
+  if (expoTokens.length > 0) {
+    await sendExpoPushNotification({
+      to: expoTokens,
+      title,
+      body,
+      data,
+      sound: "default",
+      priority: "high",
+      channelId,
+    });
+  }
+
+  if (fcmTokens.length > 0) {
+    await sendFcmPushNotification(fcmTokens, title, body, data, channelId);
+  }
 }
 
 /** Push + in-app alert for all online riders when a delivery becomes available */

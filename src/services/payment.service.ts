@@ -365,6 +365,64 @@ export async function initiateRefund(
   return { payment, refund };
 }
 
+/** Admin-initiated refund — skips customer ownership check */
+export async function initiateRefundByAdmin(
+  orderId: string,
+  reason?: string,
+  amount?: number,
+) {
+  const order = await Order.findById(orderId);
+  if (!order) {
+    throw new AppError("Order not found", 404);
+  }
+
+  const payment = await Payment.findOne({ orderId: order._id }).sort({ createdAt: -1 });
+  if (!payment) {
+    throw new AppError("No payment record for this order", 404);
+  }
+
+  if (order.paymentMethod === PaymentMethod.COD) {
+    order.paymentStatus = PaymentStatus.REFUNDED;
+    order.refundAmount = amount ?? order.grandTotal;
+    await order.save();
+    return { payment: null, order, cod: true };
+  }
+
+  if (payment.paymentStatus !== PaymentStatus.CAPTURED) {
+    throw new AppError("Only captured payments can be refunded", 400);
+  }
+  if (!payment.gatewayPaymentId) {
+    throw new AppError("No gateway payment id for refund", 400);
+  }
+
+  const refundAmount = amount ?? payment.amount;
+  if (refundAmount <= 0 || refundAmount > payment.amount) {
+    throw new AppError("Invalid refund amount", 400);
+  }
+
+  const refund = await createRazorpayRefund(
+    payment.gatewayPaymentId,
+    rupeesToPaise(refundAmount),
+    { reason: reason ?? "admin_approved" },
+  );
+
+  payment.refundAmount = refundAmount;
+  payment.refundReason = reason;
+  payment.paymentStatus = PaymentStatus.REFUNDED;
+  payment.refundedAt = new Date();
+  payment.gatewayResponse = {
+    ...(payment.gatewayResponse ?? {}),
+    refund,
+  };
+  await payment.save();
+
+  order.paymentStatus = PaymentStatus.REFUNDED;
+  order.refundAmount = refundAmount;
+  await order.save();
+
+  return { payment, refund, order };
+}
+
 /** Development-only: confirm ONLINE order without Razorpay checkout UI */
 export async function devConfirmPaymentOrder(userId: string, orderId: string) {
   if (env.NODE_ENV === "production") {

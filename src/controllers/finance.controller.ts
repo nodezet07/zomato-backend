@@ -21,6 +21,7 @@ import {
   listRestaurantSettlementHistory,
   getRiderEarningsSummaryV1,
   listRiderPayoutHistory,
+  exportSettlementsCsv,
 } from "../services/finance.service.js";
 import { buildAuditContext, writeAuditLog } from "../services/audit.service.js";
 
@@ -135,6 +136,25 @@ export const adminMarkRestaurantSettlementPaid = async (
       newData: { paymentReference: req.body.paymentReference },
     });
     sendSuccess(res, "Restaurant settlement marked paid", { settlement });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const adminExportSettlements = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const status = req.query.status as RestaurantSettlementStatus | undefined;
+    const csv = await exportSettlementsCsv(status);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="settlements-${Date.now()}.csv"`,
+    );
+    res.send(csv);
   } catch (err) {
     next(err);
   }

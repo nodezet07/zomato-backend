@@ -16,11 +16,15 @@
     "seed:phase2": "tsx src/seeds/phase2.seed.ts",
     "seed:demo": "tsx src/seeds/demoCatalog.seed.ts",
     "seed:coupons": "tsx src/seeds/coupons.seed.ts",
+    "seed:e2e": "tsx src/seeds/e2eFlow.seed.ts",
+    "seed:team": "tsx src/seeds/teamUsers.seed.ts",
+    "seed:all": "npm run seed:phase2 && npm run seed:demo && npm run seed:coupons && npm run seed:admin && npm run seed:e2e && npm run seed:team",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
     "test:e2e": "tsx scripts/e2e-test.ts",
+    "test:e2e:frontend": "npm run test:e2e && cd ../e2e-frontend && npm test",
     "test:all": "npm run test && npm run test:e2e"
   },
   "dependencies": {

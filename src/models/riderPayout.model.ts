@@ -61,7 +61,6 @@ const riderPayoutSchema = new Schema<IRiderPayoutDocument>(
 
 riderPayoutSchema.index({ riderId: 1, createdAt: -1 });
 riderPayoutSchema.index({ status: 1, createdAt: -1 });
-riderPayoutSchema.index({ payoutNumber: 1 });
 
 const RiderPayout: Model<IRiderPayoutDocument> = mongoose.model<IRiderPayoutDocument>(
   "RiderPayout",

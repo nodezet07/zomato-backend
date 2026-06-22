@@ -50,7 +50,6 @@ const supportTicketSchema = new Schema<ISupportTicketDocument>(
 );
 
 supportTicketSchema.index({ customerId: 1, status: 1 });
-supportTicketSchema.index({ ticketNumber: 1 });
 supportTicketSchema.index({ status: 1, createdAt: -1 });
 
 const SupportTicket: Model<ISupportTicketDocument> =

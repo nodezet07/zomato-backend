@@ -23,6 +23,10 @@ import {
   getRiderDeliveryHistory,
   approveRiderDev,
 } from "../services/rider.service.js";
+import {
+  createRiderWithdrawalRequest,
+  listRiderWithdrawalsForRider,
+} from "../services/platformConfig.service.js";
 
 function paramId(value: string | string[]): string {
   return Array.isArray(value) ? value[0] : value;
@@ -317,6 +321,36 @@ export const approveDev = async (
     const riderId = paramId(req.params.riderId);
     const rider = await approveRiderDev(riderId);
     sendSuccess(res, "Rider approved (dev)", { rider });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /riders/withdrawals
+export const requestWithdrawal = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const request = await createRiderWithdrawalRequest(req.userId!, req.body.amount);
+    sendSuccess(res, "Withdrawal request submitted", { request }, 201);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /riders/withdrawals
+export const getWithdrawals = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 20;
+    const data = await listRiderWithdrawalsForRider(req.userId!, page, limit);
+    sendSuccess(res, "Withdrawal requests fetched", data);
   } catch (err) {
     next(err);
   }

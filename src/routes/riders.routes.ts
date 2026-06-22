@@ -31,12 +31,15 @@ import {
   getHistory,
   approveDev,
   uploadDocument,
+  requestWithdrawal,
+  getWithdrawals,
 } from "../controllers/riders.controller.js";
 import {
   riderEarningsSummaryV1,
   riderPayoutHistory,
 } from "../controllers/finance.controller.js";
 import { financeListQuerySchema } from "../validators/finance.validator.js";
+import { createWithdrawalSchema } from "../validators/platformConfig.validator.js";
 import { imageUpload } from "../middlewares/upload.middleware.js";
 
 const router = Router();
@@ -88,6 +91,18 @@ router.get(
   requireRider,
   validate(financeListQuerySchema, "query"),
   asyncHandler(riderPayoutHistory),
+);
+router.post(
+  "/withdrawals",
+  requireRider,
+  validate(createWithdrawalSchema),
+  asyncHandler(requestWithdrawal),
+);
+router.get(
+  "/withdrawals",
+  requireRider,
+  validate(financeListQuerySchema, "query"),
+  asyncHandler(getWithdrawals),
 );
 router.get("/history", requireRider, asyncHandler(getHistory));
 

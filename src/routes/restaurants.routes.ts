@@ -16,6 +16,7 @@ import {
 } from "../validators/restaurant.validator.js";
 import {
   createRestaurant,
+  getMyRestaurant,
   getRestaurants,
   getRecommendedRestaurants,
   getNearbyRestaurants,
@@ -68,6 +69,12 @@ router.post(
   isAuth,
   validate(createRestaurantSchema),
   asyncHandler(createRestaurant),
+);
+router.get(
+  "/mine",
+  isAuth,
+  requireRestaurantOwner,
+  asyncHandler(getMyRestaurant),
 );
 
 // Static paths before :restaurantId

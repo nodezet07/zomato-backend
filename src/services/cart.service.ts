@@ -15,6 +15,7 @@ import {
   PLATFORM_FEE_PERCENT,
   MAX_PLATFORM_FEE,
 } from "../constants/index.js";
+import { getEffectivePlatformPolicy } from "./platformConfig.service.js";
 
 type CartAddon = { name: string; price: number };
 
@@ -58,17 +59,22 @@ export async function recalculateCart(cart: InstanceType<typeof Cart>) {
   subtotal = Math.round(subtotal * 100) / 100;
   taxAmount = Math.round(taxAmount * 100) / 100;
 
+  const policy = await getEffectivePlatformPolicy();
+  const defaultDeliveryFee = policy.defaultDeliveryFee ?? DEFAULT_DELIVERY_FEE;
+  const platformFeePercent = policy.defaultPlatformFeePercent ?? PLATFORM_FEE_PERCENT;
+  const maxPlatformFee = policy.maxPlatformFee ?? MAX_PLATFORM_FEE;
+
   const user = await User.findById(cart.userId);
   const isGold = user?.isGoldMember || false;
 
   let deliveryFee =
     subtotal >= restaurant.minimumOrderAmount
-      ? DEFAULT_DELIVERY_FEE
-      : DEFAULT_DELIVERY_FEE;
+      ? defaultDeliveryFee
+      : defaultDeliveryFee;
 
   let platformFee = Math.min(
-    MAX_PLATFORM_FEE,
-    Math.round((subtotal * PLATFORM_FEE_PERCENT) / 100),
+    maxPlatformFee,
+    Math.round((subtotal * platformFeePercent) / 100),
   );
 
   let goldDiscount = 0;

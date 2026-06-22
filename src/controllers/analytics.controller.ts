@@ -7,6 +7,7 @@ import {
   getOrderAnalytics,
   getUserAnalytics,
   getDeliveryAnalytics,
+  getTaxReport,
 } from "../services/analytics.service.js";
 
 function rangeFromQuery(query: AuthRequest["query"]) {
@@ -94,6 +95,19 @@ export const summary = async (
       users: userStats,
       delivery: deliveryStats,
     });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const tax = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const data = await getTaxReport(rangeFromQuery(req.query));
+    sendSuccess(res, "Tax report", { report: data });
   } catch (err) {
     next(err);
   }

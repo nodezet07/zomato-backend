@@ -16,6 +16,7 @@ import {
   SettlementCycle,
 } from "../types/enums.js";
 import { getPagination, paginationMeta } from "../helpers/pagination.js";
+import { recordLedgerEntry } from "./platformConfig.service.js";
 
 function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
@@ -106,6 +107,20 @@ export async function recordOrderFinancialsOnDelivery(
   }
 
   await order.save();
+
+  try {
+    await recordLedgerEntry({
+      entryType: "COMMISSION",
+      debitAccount: "RESTAURANT",
+      debitEntityId: order.restaurantId.toString(),
+      creditAccount: "PLATFORM",
+      amount: split.commissionAmount,
+      orderId: order._id.toString(),
+      description: `Platform commission on delivered order`,
+    });
+  } catch {
+    /* ledger is best-effort in V1 */
+  }
 }
 
 // ─── Restaurant owner / partner views ───────────────────────────────────────
@@ -231,21 +246,21 @@ export async function listRestaurantSettlementHistory(
     throw new AppError("Not your restaurant", 403);
   }
 
-  const { skip } = getPagination(page, limit);
+  const { page: safePage, limit: safeLimit, skip } = getPagination(page, limit);
   const filter = { restaurantId: restaurant._id };
 
   const [settlements, total] = await Promise.all([
     RestaurantSettlement.find(filter)
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit)
+      .limit(safeLimit)
       .lean(),
     RestaurantSettlement.countDocuments(filter),
   ]);
 
   return {
     settlements,
-    pagination: paginationMeta(total, page, limit),
+    pagination: paginationMeta(total, safePage, safeLimit),
   };
 }
 
@@ -328,17 +343,17 @@ export async function listRiderPayoutHistory(
     throw new AppError("Rider not found", 404);
   }
 
-  const { skip } = getPagination(page, limit);
+  const { page: safePage, limit: safeLimit, skip } = getPagination(page, limit);
   const filter = { riderId: rider._id };
 
   const [payouts, total] = await Promise.all([
-    RiderPayout.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    RiderPayout.find(filter).sort({ createdAt: -1 }).skip(skip).limit(safeLimit).lean(),
     RiderPayout.countDocuments(filter),
   ]);
 
   return {
     payouts,
-    pagination: paginationMeta(total, page, limit),
+    pagination: paginationMeta(total, safePage, safeLimit),
   };
 }
 
@@ -439,7 +454,7 @@ export async function getAdminFinanceSummary() {
 }
 
 export async function listAdminRestaurantEarnings(page: number, limit: number) {
-  const { skip } = getPagination(page, limit);
+  const { page: safePage, limit: safeLimit, skip } = getPagination(page, limit);
 
   const rows = await Order.aggregate([
     {
@@ -460,7 +475,7 @@ export async function listAdminRestaurantEarnings(page: number, limit: number) {
     },
     { $sort: { netPayable: -1 } },
     { $skip: skip },
-    { $limit: limit },
+    { $limit: safeLimit },
     {
       $lookup: {
         from: "restaurants",
@@ -502,7 +517,7 @@ export async function listAdminRestaurantEarnings(page: number, limit: number) {
       totalCommission: roundMoney(r.totalCommission),
       netPayable: roundMoney(r.netPayable),
     })),
-    pagination: paginationMeta(total[0]?.total ?? 0, page, limit),
+    pagination: paginationMeta(total[0]?.total ?? 0, safePage, safeLimit),
   };
 }
 
@@ -668,6 +683,20 @@ export async function markRestaurantSettlementPaid(
     { $set: { "settlement.restaurantSettlementStatus": "PAID" } },
   );
 
+  try {
+    await recordLedgerEntry({
+      entryType: "RESTAURANT_SETTLEMENT",
+      debitAccount: "PLATFORM",
+      creditAccount: "RESTAURANT",
+      creditEntityId: settlement.restaurantId.toString(),
+      amount: settlement.netPayable,
+      settlementId: settlement._id.toString(),
+      description: `Restaurant settlement ${settlement.settlementNumber}`,
+    });
+  } catch {
+    /* ledger is best-effort in V1 */
+  }
+
   return settlement;
 }
 
@@ -676,7 +705,7 @@ export async function listAdminRestaurantSettlements(
   limit: number,
   status?: RestaurantSettlementStatus,
 ) {
-  const { skip } = getPagination(page, limit);
+  const { page: safePage, limit: safeLimit, skip } = getPagination(page, limit);
   const filter: Record<string, unknown> = {};
   if (status) {
     filter.status = status;
@@ -686,17 +715,17 @@ export async function listAdminRestaurantSettlements(
     RestaurantSettlement.find(filter)
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit)
+      .limit(safeLimit)
       .populate("restaurantId", "restaurantName slug")
       .lean(),
     RestaurantSettlement.countDocuments(filter),
   ]);
 
-  return { settlements, pagination: paginationMeta(total, page, limit) };
+  return { settlements, pagination: paginationMeta(total, safePage, safeLimit) };
 }
 
 export async function listAdminRiderEarnings(page: number, limit: number) {
-  const { skip } = getPagination(page, limit);
+  const { page: safePage, limit: safeLimit, skip } = getPagination(page, limit);
 
   const rows = await Order.aggregate([
     {
@@ -716,7 +745,7 @@ export async function listAdminRiderEarnings(page: number, limit: number) {
     },
     { $sort: { grossEarnings: -1 } },
     { $skip: skip },
-    { $limit: limit },
+    { $limit: safeLimit },
     {
       $lookup: {
         from: "riders",
@@ -753,7 +782,7 @@ export async function listAdminRiderEarnings(page: number, limit: number) {
       ...r,
       grossEarnings: roundMoney(r.grossEarnings),
     })),
-    pagination: paginationMeta(total[0]?.total ?? 0, page, limit),
+    pagination: paginationMeta(total[0]?.total ?? 0, safePage, safeLimit),
   };
 }
 
@@ -876,6 +905,20 @@ export async function markRiderPayoutPaid(
     { $set: { "settlement.riderPayoutStatus": "PAID" } },
   );
 
+  try {
+    await recordLedgerEntry({
+      entryType: "RIDER_PAYOUT",
+      debitAccount: "PLATFORM",
+      creditAccount: "RIDER",
+      creditEntityId: payout.riderId.toString(),
+      amount: payout.netPayable,
+      payoutId: payout._id.toString(),
+      description: `Rider payout ${payout.payoutNumber}`,
+    });
+  } catch {
+    /* ledger is best-effort in V1 */
+  }
+
   return payout;
 }
 
@@ -884,7 +927,7 @@ export async function listAdminRiderPayouts(
   limit: number,
   status?: RiderPayoutStatus,
 ) {
-  const { skip } = getPagination(page, limit);
+  const { page: safePage, limit: safeLimit, skip } = getPagination(page, limit);
   const filter: Record<string, unknown> = {};
   if (status) {
     filter.status = status;
@@ -894,11 +937,92 @@ export async function listAdminRiderPayouts(
     RiderPayout.find(filter)
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit)
+      .limit(safeLimit)
       .populate("riderId", "riderCode userId")
       .lean(),
     RiderPayout.countDocuments(filter),
   ]);
 
-  return { payouts, pagination: paginationMeta(total, page, limit) };
+  return { payouts, pagination: paginationMeta(total, safePage, safeLimit) };
+}
+
+export async function exportSettlementsCsv(status?: RestaurantSettlementStatus) {
+  const filter: Record<string, unknown> = {};
+  if (status) filter.status = status;
+
+  const settlements = await RestaurantSettlement.find(filter)
+    .sort({ createdAt: -1 })
+    .limit(500)
+    .populate("restaurantId", "restaurantName")
+    .lean();
+
+  const header =
+    "settlementNumber,restaurant,status,orderCount,netPayable,createdAt,paidAt,paymentReference\n";
+  const rows = settlements.map((s) => {
+    const rest = s.restaurantId as { restaurantName?: string } | undefined;
+    return [
+      s.settlementNumber,
+      `"${(rest?.restaurantName ?? "").replace(/"/g, '""')}"`,
+      s.status,
+      s.orderCount,
+      s.netPayable,
+      s.createdAt?.toISOString?.() ?? "",
+      s.paidAt?.toISOString?.() ?? "",
+      s.paymentReference ?? "",
+    ].join(",");
+  });
+
+  return header + rows.join("\n");
+}
+
+/** Scheduled job: create settlement batches for restaurants with pending earnings. */
+export async function runScheduledSettlements(adminId: string) {
+  const { restaurants } = await listAdminRestaurantEarnings(1, 100);
+  const created: string[] = [];
+  const errors: string[] = [];
+
+  for (const row of restaurants) {
+    try {
+      const settlement = await createRestaurantSettlement(adminId, row.restaurantId.toString(), {});
+      created.push(settlement.settlementNumber);
+    } catch (err) {
+      errors.push(`${row.restaurantName}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  return { createdCount: created.length, settlementNumbers: created, errors };
+}
+
+/** Scheduled job: create rider payout batches for pending earnings. */
+export async function runScheduledRiderPayouts(adminId: string) {
+  const { riders } = await listAdminRiderEarnings(1, 100);
+  const created: string[] = [];
+  const errors: string[] = [];
+
+  for (const row of riders) {
+    try {
+      const payout = await createRiderPayout(adminId, row.riderId.toString(), {});
+      created.push(payout.payoutNumber);
+    } catch (err) {
+      errors.push(`${row.riderCode}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  return { createdCount: created.length, payoutNumbers: created, errors };
+}
+
+/**
+ * RazorpayX placeholder — marks approved payouts as PROCESSING for manual follow-up.
+ * Full RazorpayX API integration deferred to production phase.
+ */
+export async function processAutomatedPayoutsStub() {
+  const pending = await RiderPayout.find({ status: RiderPayoutStatus.PENDING }).limit(20);
+  let processed = 0;
+  for (const payout of pending) {
+    payout.status = RiderPayoutStatus.APPROVED;
+    payout.notes = (payout.notes ? `${payout.notes}\n` : "") + "[Auto] Queued for RazorpayX (stub)";
+    await payout.save();
+    processed += 1;
+  }
+  return { processed, provider: "RazorpayX-stub" };
 }

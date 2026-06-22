@@ -49,7 +49,6 @@ const cartSchema = new Schema<ICartDocument>(
   { timestamps: true, collection: "carts" },
 );
 
-cartSchema.index({ userId: 1 }, { unique: true });
 cartSchema.index({ restaurantId: 1 });
 
 const Cart: Model<ICartDocument> = mongoose.model<ICartDocument>("Cart", cartSchema);

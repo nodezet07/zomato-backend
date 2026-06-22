@@ -145,7 +145,6 @@ const orderSchema = new Schema<IOrderDocument>(
   { timestamps: true, collection: "orders" },
 );
 
-orderSchema.index({ orderNumber: 1 });
 orderSchema.index({ customerId: 1, createdAt: -1 });
 orderSchema.index({ restaurantId: 1, orderStatus: 1 });
 orderSchema.index({ riderId: 1, orderStatus: 1 });

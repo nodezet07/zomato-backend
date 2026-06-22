@@ -2,6 +2,7 @@ import { Router } from "express";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import {
   getCouponsByRestaurant,
+  listCoupons,
   createCoupon,
   createRestaurantCoupon,
   deleteCoupon,
@@ -30,7 +31,8 @@ router.delete(
   asyncHandler(deleteRestaurantCoupon),
 );
 
-// Admin: create and delete coupons (admin panel integration)
+// Admin: list, create and delete coupons (admin panel integration)
+router.get("/", isAdminAuth, asyncHandler(listCoupons));
 router.post("/", isAdminAuth, asyncHandler(createCoupon));
 router.delete("/:couponId", isAdminAuth, asyncHandler(deleteCoupon));
 

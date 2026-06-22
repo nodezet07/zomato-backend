@@ -136,8 +136,9 @@ export async function googlePlaceDetails(placeId: string): Promise<{
   };
 
   const result = data.result;
-  const lat = result?.geometry?.location?.lat;
-  const lng = result?.geometry?.location?.lng;
+  if (!result) return null;
+  const lat = result.geometry?.location?.lat;
+  const lng = result.geometry?.location?.lng;
   if (data.status !== "OK" || lat == null || lng == null) return null;
 
   return {

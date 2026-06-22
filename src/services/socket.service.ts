@@ -58,9 +58,10 @@ export function buildOrderSocketPayload(order: OrderLike): OrderSocketPayload {
         userId?: { fullName?: string; mobile?: string } | mongoose.Types.ObjectId;
       }
     | undefined;
-  if (rider && typeof rider === "object" && rider.userId && typeof rider.userId === "object") {
-    payload.riderName = rider.userId.fullName;
-    payload.riderMobile = rider.userId.mobile;
+  const riderUser = rider?.userId;
+  if (riderUser && typeof riderUser === "object" && "fullName" in riderUser) {
+    payload.riderName = riderUser.fullName;
+    payload.riderMobile = riderUser.mobile;
     payload.riderCode = rider.riderCode;
   }
 

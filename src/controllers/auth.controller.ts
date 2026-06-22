@@ -425,7 +425,7 @@ export const restaurantSendOtp = async (req: AuthRequest, res: Response) => {
     sendError(res, "No restaurant partner account found for this mobile", 404);
     return;
   }
-  await sendLoginOtpHandler(user.email, res);
+  await sendLoginOtpHandler(user.email!, res);
 };
 
 export const restaurantVerifyOtp = async (

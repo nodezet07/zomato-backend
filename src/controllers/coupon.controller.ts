@@ -5,10 +5,45 @@ import Restaurant from "../models/restaurant.model.js";
 import { sendSuccess, sendError } from "../utils/apiResponse.js";
 import { CouponStatus } from "../types/enums.js";
 import { assertRestaurantOwner } from "../services/menu.service.js";
+import { getPagination, paginationMeta } from "../helpers/pagination.js";
 
 function paramId(value: string | string[]): string {
   return Array.isArray(value) ? value[0] : value;
 }
+
+// GET /coupons — Admin only (list all coupons)
+export const listCoupons = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const page = parseInt(String(req.query.page ?? "1"), 10) || 1;
+    const limit = parseInt(String(req.query.limit ?? "20"), 10) || 20;
+    const status = req.query.status as string | undefined;
+
+    const filter: Record<string, unknown> = {};
+    if (status) filter.status = status;
+
+    const { skip } = getPagination(String(page), String(limit));
+    const [coupons, total] = await Promise.all([
+      Coupon.find(filter)
+        .populate("applicableRestaurants", "restaurantName")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Coupon.countDocuments(filter),
+    ]);
+
+    sendSuccess(res, "Coupons fetched", {
+      coupons,
+      pagination: paginationMeta(total, page, limit),
+    });
+  } catch (err) {
+    next(err);
+  }
+};
 
 // GET /coupons/restaurant/:restaurantId — public, no auth required
 export const getCouponsByRestaurant = async (

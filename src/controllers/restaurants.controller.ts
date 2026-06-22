@@ -95,6 +95,27 @@ export const createRestaurant = async (
   }
 };
 
+// GET /restaurants/mine — restaurant linked to logged-in owner
+export const getMyRestaurant = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const restaurant = await Restaurant.findOne({
+      ownerId: req.userId,
+      isDeleted: false,
+    });
+    if (!restaurant) {
+      sendError(res, "No restaurant linked to this owner account", 404);
+      return;
+    }
+    sendSuccess(res, "Your restaurant", { restaurant });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // GET /restaurants — browse (customer flow)
 export const getRestaurants = async (
   req: AuthRequest,

@@ -6,6 +6,7 @@ export const QUEUE_NAMES = {
   SMS: "sms",
   REFUNDS: "refunds",
   ANALYTICS: "analytics",
+  FINANCE: "finance",
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
