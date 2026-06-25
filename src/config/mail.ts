@@ -30,10 +30,7 @@ async function sendEmail(to: string, subject: string, html: string) {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(`Email failed to ${to}: ${message}`);
-    if (process.env.NODE_ENV !== "development") {
-      throw error;
-    }
-    logger.warn(`[DEV] Continuing without email — OTP is in API response / server logs`);
+    throw error;
   }
 }
 

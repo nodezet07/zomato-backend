@@ -1,5 +1,4 @@
 import { Response, NextFunction } from "express";
-import logger from "../config/logger.js";
 import User from "../models/user.model.js";
 import { AuthRequest } from "../types/auth.types.js";
 import { AccountStatus, UserRole } from "../types/enums.js";
@@ -34,10 +33,6 @@ function getRefreshTokenFromRequest(req: AuthRequest): string | undefined {
     req.cookies?.refreshToken ||
     undefined
   );
-}
-
-function devOtpPayload(otp: string) {
-  return process.env.NODE_ENV === "development" ? { devOtp: otp } : {};
 }
 
 // ─── POST /auth/register ───────────────────────────────────────
@@ -161,10 +156,7 @@ async function sendSignupOtpHandler(
   const otp = generateOTP();
   await saveOtp("signup", email, otp, mobile);
   await sendSignupOtpEmail(email, otp);
-  if (process.env.NODE_ENV === "development") {
-    logger.info(`[DEV] Signup OTP for ${email}: ${otp}`);
-  }
-  sendSuccess(res, "OTP sent to your email", { email, purpose: "signup", ...devOtpPayload(otp) });
+  sendSuccess(res, "OTP sent to your email", { email, purpose: "signup" });
 }
 
 async function sendLoginOtpHandler(email: string, res: Response) {
@@ -186,10 +178,7 @@ async function sendLoginOtpHandler(email: string, res: Response) {
   const otp = generateOTP();
   await saveOtp("login", email, otp);
   await sendLoginOtpEmail(email, otp);
-  if (process.env.NODE_ENV === "development") {
-    logger.info(`[DEV] Login OTP for ${email}: ${otp}`);
-  }
-  sendSuccess(res, "OTP sent to your email", { email, purpose: "login", ...devOtpPayload(otp) });
+  sendSuccess(res, "OTP sent to your email", { email, purpose: "login" });
 }
 
 async function sendResetOtpHandler(email: string, res: Response) {
@@ -202,13 +191,9 @@ async function sendResetOtpHandler(email: string, res: Response) {
   const otp = generateOTP();
   await saveOtp("reset", email, otp);
   await sendResetPasswordOtpEmail(email, otp);
-  if (process.env.NODE_ENV === "development") {
-    logger.info(`[DEV] Reset OTP for ${email}: ${otp}`);
-  }
   sendSuccess(res, "If the email exists, an OTP has been sent", {
     email,
     purpose: "reset",
-    ...devOtpPayload(otp),
   });
 }
 
