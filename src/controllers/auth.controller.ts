@@ -16,6 +16,7 @@ import {
   sendSignupOtpEmail,
   sendLoginOtpEmail,
   sendResetPasswordOtpEmail,
+  deliverOtpEmail,
 } from "../services/email.service.js";
 import {
   formatAuthUser,
@@ -164,7 +165,15 @@ async function sendSignupOtpHandler(
 
   const otp = generateOTP();
   await saveOtp("signup", email, otp, mobile);
-  await sendSignupOtpEmail(email, otp);
+  const sent = await deliverOtpEmail(email, otp, sendSignupOtpEmail);
+  if (config.NODE_ENV === "production" && !sent) {
+    sendError(
+      res,
+      "Could not send OTP email. SMTP connection failed — check server email settings.",
+      503,
+    );
+    return;
+  }
   sendSuccess(res, "OTP sent to your email", withDevOtp({ email, purpose: "signup" }, otp));
 }
 
@@ -186,7 +195,15 @@ async function sendLoginOtpHandler(email: string, res: Response) {
 
   const otp = generateOTP();
   await saveOtp("login", email, otp);
-  await sendLoginOtpEmail(email, otp);
+  const sent = await deliverOtpEmail(email, otp, sendLoginOtpEmail);
+  if (config.NODE_ENV === "production" && !sent) {
+    sendError(
+      res,
+      "Could not send OTP email. SMTP connection failed — check server email settings.",
+      503,
+    );
+    return;
+  }
   sendSuccess(res, "OTP sent to your email", withDevOtp({ email, purpose: "login" }, otp));
 }
 
@@ -199,7 +216,7 @@ async function sendResetOtpHandler(email: string, res: Response) {
 
   const otp = generateOTP();
   await saveOtp("reset", email, otp);
-  await sendResetPasswordOtpEmail(email, otp);
+  await deliverOtpEmail(email, otp, sendResetPasswordOtpEmail);
   sendSuccess(res, "If the email exists, an OTP has been sent", {
     email,
     purpose: "reset",
