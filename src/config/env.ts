@@ -41,6 +41,7 @@ const envSchema = z.object({
   SMTP_PASS: z.string().optional(),
   SMTP_SECURE: z.enum(["true", "false"]).default("false"),
   EMAIL_FROM: z.string().optional(),
+  RESEND_API_KEY: z.string().optional(),
   AWS_REGION: z.string().optional(),
   AWS_ACCESS_KEY_ID: z.string().optional(),
   AWS_SECRET_ACCESS_KEY: z.string().optional(),

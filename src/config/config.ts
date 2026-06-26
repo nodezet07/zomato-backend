@@ -16,6 +16,7 @@ export default {
   SMTP_PASS: env.SMTP_PASS || "",
   SMTP_SECURE: env.SMTP_SECURE,
   EMAIL_FROM: env.EMAIL_FROM || "",
+  RESEND_API_KEY: env.RESEND_API_KEY || "",
   AWS_REGION: env.AWS_REGION || "",
   AWS_ACCESS_KEY_ID: env.AWS_ACCESS_KEY_ID || "",
   AWS_SECRET_ACCESS_KEY: env.AWS_SECRET_ACCESS_KEY || "",
