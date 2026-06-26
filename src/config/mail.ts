@@ -5,6 +5,7 @@ import logger from "./logger.js";
 const SMTP_TIMEOUT_MS = 10_000;
 const isProd = config.NODE_ENV === "production";
 
+const hasResend = Boolean(config.RESEND_API_KEY);
 const hasSmtp =
   config.SMTP_HOST && config.SMTP_USER && config.SMTP_PASS;
 
@@ -20,33 +21,93 @@ const transporter = hasSmtp
     })
   : null;
 
-/** Returns true when the message was handed off to SMTP successfully. */
+function resolveFromAddress(): string {
+  if (config.EMAIL_FROM) return config.EMAIL_FROM;
+  if (hasResend) return "QBITES <onboarding@resend.dev>";
+  return `"Food App" <${config.SMTP_USER}>`;
+}
+
+async function sendViaResend(
+  to: string,
+  subject: string,
+  html: string,
+): Promise<boolean> {
+  if (!config.RESEND_API_KEY) return false;
+
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: resolveFromAddress(),
+        to: [to],
+        subject,
+        html,
+      }),
+      signal: AbortSignal.timeout(12_000),
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      logger.error(`Resend failed to ${to}: ${res.status} ${body.slice(0, 200)}`);
+      return false;
+    }
+
+    const data = (await res.json()) as { id?: string };
+    logger.info(`Resend email sent to ${to}: ${data.id ?? "ok"}`);
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(`Resend failed to ${to}: ${message}`);
+    return false;
+  }
+}
+
+async function sendViaSmtp(
+  to: string,
+  subject: string,
+  html: string,
+): Promise<boolean> {
+  if (!transporter) return false;
+
+  try {
+    const info = await transporter.sendMail({
+      from: resolveFromAddress(),
+      to,
+      subject,
+      html,
+    });
+    logger.info(`SMTP email sent to ${to}: ${info.messageId}`);
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(`SMTP email failed to ${to}: ${message}`);
+    return false;
+  }
+}
+
+/** Resend API first (works on Render), then Gmail SMTP fallback for local dev. */
 export async function trySendEmail(
   to: string,
   subject: string,
   html: string,
 ): Promise<boolean> {
-  if (!transporter) {
-    if (!isProd) {
-      logger.warn(`[DEV] Email skipped (SMTP not configured): ${to} — ${subject}`);
-    }
-    return false;
+  if (hasResend) {
+    const sent = await sendViaResend(to, subject, html);
+    if (sent) return true;
   }
 
-  try {
-    const info = await transporter.sendMail({
-      from: config.EMAIL_FROM || `"Food App" <${config.SMTP_USER}>`,
-      to,
-      subject,
-      html,
-    });
-    logger.info(`Email sent to ${to}: ${info.messageId}`);
-    return true;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(`Email failed to ${to}: ${message}`);
-    return false;
+  if (transporter) {
+    return sendViaSmtp(to, subject, html);
   }
+
+  if (!isProd) {
+    logger.warn(`[DEV] Email skipped (no Resend/SMTP): ${to} — ${subject}`);
+  }
+  return false;
 }
 
 export const sendSignupOtpEmail = async (to: string, otp: string) => {
@@ -86,8 +147,8 @@ export const sendResetPasswordOtpEmail = async (to: string, otp: string) => {
 };
 
 /**
- * Production: wait up to SMTP_TIMEOUT_MS for delivery (fail if SMTP down).
- * Development: respond immediately; email sends in background; OTP only in API/logs if email fails.
+ * Production: wait for email delivery (Resend or SMTP).
+ * Development: respond immediately; email in background; devOtp if delivery fails.
  */
 export async function deliverOtpEmail(
   email: string,
