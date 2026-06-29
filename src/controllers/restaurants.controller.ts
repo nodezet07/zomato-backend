@@ -299,6 +299,11 @@ export const deleteRestaurant = async (
     restaurant.isOpen = false;
     await restaurant.save();
 
+    const { invalidateRestaurantCaches } = await import(
+      "../services/cache.service.js"
+    );
+    void invalidateRestaurantCaches();
+
     sendSuccess(res, "Restaurant deleted");
   } catch (err) {
     next(err);
@@ -335,6 +340,12 @@ export const updateRestaurantStatus = async (
     }
 
     await restaurant.save();
+
+    const { invalidateRestaurantCaches } = await import(
+      "../services/cache.service.js"
+    );
+    void invalidateRestaurantCaches();
+
     sendSuccess(res, "Restaurant status updated", { restaurant });
   } catch (err) {
     next(err);
@@ -386,6 +397,12 @@ export const approveRestaurantDev = async (
     restaurant.restaurantStatus = RestaurantStatus.APPROVED;
     restaurant.isOpen = true;
     await restaurant.save();
+
+    const { invalidateRestaurantCaches } = await import(
+      "../services/cache.service.js"
+    );
+    void invalidateRestaurantCaches();
+
     sendSuccess(res, "Restaurant approved (dev)", { restaurant });
   } catch (err) {
     next(err);

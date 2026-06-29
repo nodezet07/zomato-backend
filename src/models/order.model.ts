@@ -148,6 +148,10 @@ const orderSchema = new Schema<IOrderDocument>(
 orderSchema.index({ customerId: 1, createdAt: -1 });
 orderSchema.index({ restaurantId: 1, orderStatus: 1 });
 orderSchema.index({ riderId: 1, orderStatus: 1 });
+orderSchema.index({ orderStatus: 1, riderId: 1, createdAt: 1 });
+orderSchema.index({ createdAt: -1 });
+orderSchema.index({ orderStatus: 1, createdAt: -1 });
+orderSchema.index({ restaurantId: 1, createdAt: -1 });
 
 const Order: Model<IOrderDocument> = mongoose.model<IOrderDocument>("Order", orderSchema);
 

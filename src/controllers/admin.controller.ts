@@ -7,6 +7,7 @@ import {
   listUsers,
   setUserBlocked,
   listRestaurants,
+  adminCreateRestaurant,
   approveRestaurant,
   rejectRestaurant,
   listRiders,
@@ -130,6 +131,31 @@ export const getRestaurants = async (
       status: req.query.status as string | undefined,
     });
     sendSuccess(res, "Restaurants fetched", result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /admin/restaurants
+export const createRestaurantHandler = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { restaurant, owner } = await adminCreateRestaurant(req.body);
+    await writeAuditLog(buildAuditContext(req), {
+      module: "restaurant",
+      action: "create",
+      entityId: restaurant._id.toString(),
+      newData: { ownerEmail: owner.email, restaurantName: restaurant.restaurantName },
+    });
+    sendSuccess(
+      res,
+      "Restaurant created",
+      { restaurant, owner: owner.getPublicProfile?.() ?? owner },
+      201,
+    );
   } catch (err) {
     next(err);
   }

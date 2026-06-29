@@ -96,6 +96,17 @@ export function broadcastOrderEvent(
 
   if (event === SocketEvents.ORDER_CREATED) {
     socket.to(`restaurant:${restaurantId}`).emit(SocketEvents.NEW_ORDER, payload);
+    // Owner is always in user:{id} room — fallback when join_restaurant fails on Capacitor
+    void import("../models/restaurant.model.js").then(({ default: Restaurant }) =>
+      Restaurant.findById(restaurantId)
+        .select("ownerId")
+        .lean()
+        .then((r) => {
+          if (r?.ownerId) {
+            socket.to(`user:${r.ownerId.toString()}`).emit(SocketEvents.NEW_ORDER, payload);
+          }
+        }),
+    );
   }
 
   void notifyOrderEvent(order, event);

@@ -1,6 +1,7 @@
 import { env } from "../config/env.js";
 import { AppError } from "../utils/AppError.js";
 import type { ParsedAddress } from "./geocode.service.js";
+import { cacheGetOrSet } from "./cache.service.js";
 
 function googleKey(kind: "geocoding" | "places" | "routes"): string | undefined {
   const shared =
@@ -161,11 +162,15 @@ export async function googleRouteEtaMinutes(input: {
   origin: { latitude: number; longitude: number };
   destination: { latitude: number; longitude: number };
 }): Promise<number | null> {
-  const route = await googleComputeRoute(input);
-  if (!route?.duration) return null;
-  const seconds = Number.parseInt(route.duration.replace("s", ""), 10);
-  if (!Number.isFinite(seconds)) return null;
-  return Math.max(1, Math.ceil(seconds / 60));
+  const key = `cache:google:eta:${input.origin.latitude.toFixed(4)}:${input.origin.longitude.toFixed(4)}:${input.destination.latitude.toFixed(4)}:${input.destination.longitude.toFixed(4)}`;
+
+  return cacheGetOrSet(key, async () => {
+    const route = await googleComputeRoute(input);
+    if (!route?.duration) return null;
+    const seconds = Number.parseInt(route.duration.replace("s", ""), 10);
+    if (!Number.isFinite(seconds)) return null;
+    return Math.max(1, Math.ceil(seconds / 60));
+  }, 45); // cache for 45 seconds
 }
 
 function decodePolyline(encoded: string): Array<{ latitude: number; longitude: number }> {

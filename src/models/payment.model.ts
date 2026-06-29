@@ -62,6 +62,8 @@ const paymentSchema = new Schema<IPaymentDocument>(
 paymentSchema.index({ orderId: 1 });
 paymentSchema.index({ userId: 1, createdAt: -1 });
 paymentSchema.index({ gatewayPaymentId: 1 }, { sparse: true });
+paymentSchema.index({ createdAt: -1 });
+paymentSchema.index({ paymentStatus: 1, createdAt: -1 });
 
 const Payment: Model<IPaymentDocument> = mongoose.model<IPaymentDocument>(
   "Payment",

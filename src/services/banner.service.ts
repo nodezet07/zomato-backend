@@ -1,6 +1,7 @@
 import Banner from "../models/banner.model.js";
 import { AppError } from "../utils/AppError.js";
 import { getPagination, paginationMeta } from "../helpers/pagination.js";
+import { cacheGetOrSet, cacheDelPattern } from "./cache.service.js";
 
 export async function listBanners(page = 1, limit = 20, placement?: string) {
   const { skip } = getPagination(String(page), String(limit));
@@ -16,17 +17,20 @@ export async function listBanners(page = 1, limit = 20, placement?: string) {
 }
 
 export async function listActiveBanners(placement = "HOME") {
-  const now = new Date();
-  return Banner.find({
-    isActive: true,
-    placement,
-    $or: [{ startsAt: { $exists: false } }, { startsAt: { $lte: now } }],
-    $and: [
-      { $or: [{ endsAt: { $exists: false } }, { endsAt: { $gte: now } }] },
-    ],
-  })
-    .sort({ priority: -1 })
-    .lean();
+  const cacheKey = `cache:banners:active:${placement}`;
+  return cacheGetOrSet(cacheKey, async () => {
+    const now = new Date();
+    return Banner.find({
+      isActive: true,
+      placement,
+      $or: [{ startsAt: { $exists: false } }, { startsAt: { $lte: now } }],
+      $and: [
+        { $or: [{ endsAt: { $exists: false } }, { endsAt: { $gte: now } }] },
+      ],
+    })
+      .sort({ priority: -1 })
+      .lean();
+  }, 3600); // cache for 1 hour
 }
 
 export async function createBanner(body: {
@@ -39,12 +43,14 @@ export async function createBanner(body: {
   startsAt?: string;
   endsAt?: string;
 }) {
-  return Banner.create({
+  const banner = await Banner.create({
     ...body,
     placement: body.placement ?? "HOME",
     startsAt: body.startsAt ? new Date(body.startsAt) : undefined,
     endsAt: body.endsAt ? new Date(body.endsAt) : undefined,
   });
+  await cacheDelPattern("cache:banners:*");
+  return banner;
 }
 
 export async function updateBanner(
@@ -73,11 +79,13 @@ export async function updateBanner(
   if (body.endsAt !== undefined) banner.endsAt = body.endsAt ? new Date(body.endsAt) : undefined;
 
   await banner.save();
+  await cacheDelPattern("cache:banners:*");
   return banner;
 }
 
 export async function deleteBanner(bannerId: string) {
   const deleted = await Banner.findByIdAndDelete(bannerId);
   if (!deleted) throw new AppError("Banner not found", 404);
+  await cacheDelPattern("cache:banners:*");
   return deleted;
 }

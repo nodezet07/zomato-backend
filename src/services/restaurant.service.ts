@@ -62,9 +62,8 @@ async function listRestaurantsUncached(query: {
     const total = await Restaurant.countDocuments({
       ...filter,
       location: {
-        $near: {
-          $geometry: { type: "Point", coordinates: [query.lng, query.lat] },
-          $maxDistance: maxDistance,
+        $geoWithin: {
+          $centerSphere: [[query.lng, query.lat], maxDistance / 6378100],
         },
       },
     });
@@ -133,9 +132,8 @@ async function nearbyRestaurantsUncached(
     Restaurant.countDocuments({
       ...filter,
       location: {
-        $near: {
-          $geometry: { type: "Point", coordinates: [lng, lat] },
-          maxDistance: maxDistance,
+        $geoWithin: {
+          $centerSphere: [[lng, lat], maxDistance / 6378100],
         },
       },
     }),

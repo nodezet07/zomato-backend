@@ -12,6 +12,7 @@ import {
   adminCancelOrderSchema,
   approveRefundSchema,
   rejectRefundSchema,
+  adminCreateRestaurantSchema,
 } from "../validators/admin.validator.js";
 import {
   addReplySchema,
@@ -24,6 +25,7 @@ import {
   blockUser,
   unblockUser,
   getRestaurants,
+  createRestaurantHandler,
   approveRestaurantHandler,
   rejectRestaurantHandler,
   getRiders,
@@ -107,6 +109,11 @@ router.patch("/users/block/:userId", asyncHandler(blockUser));
 router.patch("/users/unblock/:userId", asyncHandler(unblockUser));
 
 router.get("/restaurants", asyncHandler(getRestaurants));
+router.post(
+  "/restaurants",
+  validate(adminCreateRestaurantSchema),
+  asyncHandler(createRestaurantHandler),
+);
 router.patch(
   "/restaurants/approve/:restaurantId",
   asyncHandler(approveRestaurantHandler),

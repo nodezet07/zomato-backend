@@ -98,6 +98,7 @@ const userSchema = new Schema<IUserDocument>(
 userSchema.index({ role: 1, accountStatus: 1 });
 userSchema.index({ createdAt: -1 });
 userSchema.index({ isDeleted: 1 });
+userSchema.index({ isDeleted: 1, createdAt: -1 });
 
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password") || !this.password) return next();

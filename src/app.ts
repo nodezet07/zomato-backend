@@ -1,5 +1,7 @@
 import express from "express";
 
+import compression from "compression";
+
 import cors from "cors";
 
 import helmet from "helmet";
@@ -54,27 +56,41 @@ if (shouldTrustProxy()) {
 
 const corsOrigins = getCorsOrigins();
 
+/** Capacitor / Expo native WebViews send these origins — must stay allowed in production */
+const NATIVE_APP_ORIGINS = [
+  "http://localhost",
+  "https://localhost",
+  "capacitor://localhost",
+  "ionic://localhost",
+];
+
+function resolveCorsOrigin():
+  | boolean
+  | string[]
+  | ((origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => void) {
+  if (corsOrigins === true) return true;
+
+  const defaults = [
+    config.FRONTEND_URL,
+    config.MASTER_URL,
+    config.API_URL,
+    "http://localhost:5174",
+    "http://localhost:5175",
+    ...NATIVE_APP_ORIGINS,
+  ].filter(Boolean);
+
+  const allowed = corsOrigins.length > 0
+    ? [...new Set([...corsOrigins, ...NATIVE_APP_ORIGINS])]
+    : defaults;
+
+  return allowed;
+}
+
 app.use(
 
   cors({
 
-    origin:
-
-      corsOrigins === true
-
-        ? true
-
-        : corsOrigins.length > 0
-
-          ? corsOrigins
-
-          : [
-              config.FRONTEND_URL,
-              config.MASTER_URL,
-              config.API_URL,
-              "http://localhost:5174",
-              "http://localhost:5175",
-            ].filter(Boolean),
+    origin: resolveCorsOrigin(),
 
     credentials: true,
 
@@ -91,6 +107,20 @@ app.use(
 app.use(helmet(getHelmetOptions()));
 
 app.use(hpp());
+
+// Compress all responses (Gzip) — reduces JSON payload sizes by 70-80%
+// Skip compression for the Razorpay webhook which needs the raw Buffer body
+app.use(
+  compression({
+    level: 6,          // Balanced: good compression ratio at low CPU cost
+    threshold: 1024,   // Only compress responses > 1KB (skip tiny 200 OK acks)
+    filter: (req, res) => {
+      // Never compress SSE streams (socket.io long-poll or EventSource)
+      if (req.headers['x-no-compression']) return false;
+      return compression.filter(req, res);
+    },
+  }),
+);
 
 
 
