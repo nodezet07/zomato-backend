@@ -95,6 +95,8 @@ export enum GatewayPaymentMethod {
 
 export enum VehicleType {
   BIKE = "bike",
+  SCOOTER = "scooter",
+  BICYCLE = "bicycle",
   CYCLE = "cycle",
   CAR = "car",
 }

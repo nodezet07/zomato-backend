@@ -281,8 +281,16 @@ export function queueNotifyUser(
     redirectId: input.redirectId,
     email: input.email,
     mobile: input.mobile,
+    pushType: input.pushType,
+    pushChannelId: input.pushChannelId,
   };
-  void enqueueNotificationJob(job);
+  void enqueueNotificationJob(job).catch((error) => {
+    logger.error("[Notification] queue failed — running inline", {
+      userId: job.userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    void notifyUser(job);
+  });
 }
 
 type OrderNotifyLike = {
@@ -383,7 +391,9 @@ export async function notifyOrderEvent(
         SocketEvents.NEW_ORDER,
         order.orderNumber,
       );
-      queueNotifyUser({
+      // Run immediately so restaurant bell/notifications page updates even if BullMQ is stuck
+      void notifyUser({
+        jobType: "notify_user",
         userId: restaurant.ownerId.toString(),
         notificationType: NotificationType.ORDER,
         title: restaurantCopy.title,
@@ -393,6 +403,12 @@ export async function notifyOrderEvent(
         redirectId: orderId,
         pushType: "new_order",
         pushChannelId: "orders",
+      }).catch((error) => {
+        logger.error("[Notification] restaurant new-order notify failed", {
+          ownerId: restaurant.ownerId.toString(),
+          orderId,
+          error: error instanceof Error ? error.message : String(error),
+        });
       });
     }
   }

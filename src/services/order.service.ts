@@ -24,6 +24,7 @@ import {
   emitOrderStatusChange,
 } from "./socket.service.js";
 import { SocketEvents } from "../types/socket.events.js";
+import { cacheDel } from "./cache.service.js";
 
 const CANCELLABLE_STATUSES: OrderStatus[] = [
   OrderStatus.PENDING,
@@ -383,6 +384,9 @@ export async function updateOrderStatus(
   }
 
   await order.save();
+  if (newStatus === OrderStatus.READY_FOR_PICKUP) {
+    await cacheDel("cache:orders:available");
+  }
   if (newStatus === OrderStatus.DELIVERED) {
     const { recordOrderFinancialsOnDelivery } = await import("./finance.service.js");
     await recordOrderFinancialsOnDelivery(order._id.toString());
@@ -478,6 +482,7 @@ export async function assignRiderToOrder(
   }
 
   const populated = await getOrderOrFail(orderId);
+  await cacheDel("cache:orders:available");
   emitDeliveryClaimed(populated._id.toString(), populated.orderNumber);
   broadcastOrderEvent(populated, SocketEvents.RIDER_ASSIGNED);
   return populated;

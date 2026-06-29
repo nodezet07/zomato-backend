@@ -9,13 +9,17 @@ import SupportTicket from "../models/supportTicket.model.js";
 import { AppError } from "../utils/AppError.js";
 import {
   AccountStatus,
+  LoginProvider,
   OrderStatus,
   PaymentStatus,
   RestaurantStatus,
   TicketStatus,
   SupportIssueType,
+  UserRole,
   VerificationStatus,
 } from "../types/enums.js";
+import { uniqueSlug } from "../utils/slug.js";
+import { buildGeoPoint } from "./restaurant.service.js";
 import { emitOrderStatusChange } from "./socket.service.js";
 import { getPagination, paginationMeta } from "../helpers/pagination.js";
 import { signAdminAccessToken, signAdminRefreshToken } from "../utils/jwtAdmin.js";
@@ -176,6 +180,115 @@ export async function listRestaurants(query: {
   ]);
 
   return { restaurants, pagination: paginationMeta(total, page, limit) };
+}
+
+export async function adminCreateRestaurant(body: {
+  ownerEmail: string;
+  ownerFullName: string;
+  ownerMobile?: string;
+  autoApprove?: boolean;
+  restaurantName: string;
+  latitude: number;
+  longitude: number;
+  description?: string;
+  phone?: string;
+  email?: string;
+  cuisines?: string[];
+  address?: {
+    street?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    pincode?: string;
+  };
+  deliveryRadiusKm?: number;
+  averageDeliveryTime?: number;
+  minimumOrderAmount?: number;
+  packagingCharge?: number;
+}) {
+  const email = body.ownerEmail.toLowerCase().trim();
+
+  if (body.ownerMobile) {
+    const mobileOwner = await User.findOne({
+      mobile: body.ownerMobile,
+      isDeleted: false,
+    });
+    if (mobileOwner && mobileOwner.email?.toLowerCase() !== email) {
+      throw new AppError(
+        `Mobile number ${body.ownerMobile} is already registered to another account (${mobileOwner.email ?? "unknown email"}).`,
+        400,
+      );
+    }
+  }
+
+  let owner = await User.findOne({ email, isDeleted: false });
+
+  if (owner) {
+    if (owner.role === UserRole.RIDER || owner.role === UserRole.ADMIN) {
+      throw new AppError("This user account cannot own a restaurant", 400);
+    }
+    const existingRestaurant = await Restaurant.findOne({
+      ownerId: owner._id,
+      isDeleted: false,
+    });
+    if (existingRestaurant) {
+      throw new AppError("This owner already has a restaurant", 400);
+    }
+    owner.fullName = body.ownerFullName;
+    if (body.ownerMobile) owner.mobile = body.ownerMobile;
+    if (owner.role === UserRole.CUSTOMER) {
+      owner.role = UserRole.RESTAURANT_OWNER;
+    }
+    owner.isEmailVerified = true;
+    owner.accountStatus = AccountStatus.ACTIVE;
+    await owner.save();
+  } else {
+    owner = await User.create({
+      email,
+      fullName: body.ownerFullName,
+      mobile: body.ownerMobile,
+      role: UserRole.RESTAURANT_OWNER,
+      loginProvider: LoginProvider.EMAIL,
+      isEmailVerified: true,
+      accountStatus: AccountStatus.ACTIVE,
+    });
+  }
+
+  const {
+    ownerEmail: _ownerEmail,
+    ownerFullName: _ownerFullName,
+    ownerMobile: _ownerMobile,
+    autoApprove,
+    latitude,
+    longitude,
+    restaurantName,
+    ...rest
+  } = body;
+
+  const slug = await uniqueSlug(restaurantName, async (s) => {
+    const found = await Restaurant.findOne({ slug: s });
+    return !!found;
+  });
+
+  const approved = autoApprove !== false;
+
+  const restaurant = await Restaurant.create({
+    ownerId: owner._id,
+    restaurantName,
+    slug,
+    ...rest,
+    latitude,
+    longitude,
+    location: buildGeoPoint(latitude, longitude),
+    restaurantStatus: approved
+      ? RestaurantStatus.APPROVED
+      : RestaurantStatus.PENDING,
+    isOpen: approved,
+  });
+
+  await restaurant.populate("ownerId", "fullName email mobile");
+
+  return { restaurant, owner };
 }
 
 export async function approveRestaurant(restaurantId: string) {

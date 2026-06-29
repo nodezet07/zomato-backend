@@ -14,6 +14,7 @@ import {
 } from "../services/menu.service.js";
 import { getPagination, paginationMeta } from "../helpers/pagination.js";
 import { publicRestaurantFilter } from "../services/restaurant.service.js";
+import { invalidateMenuCache } from "../services/cache.service.js";
 
 function paramId(value: string | string[]): string {
   return Array.isArray(value) ? value[0] : value;
@@ -36,6 +37,7 @@ export const createCategory = async (
       categoryImage,
       sortOrder: sortOrder ?? 0,
     });
+    await invalidateMenuCache(restaurantId);
 
     sendSuccess(res, "Category created", { category }, 201);
   } catch (err) {
@@ -73,6 +75,7 @@ export const updateCategory = async (
 
     Object.assign(category, req.body);
     await category.save();
+    await invalidateMenuCache(category.restaurantId.toString());
     sendSuccess(res, "Category updated", { category });
   } catch (err) {
     next(err);
@@ -97,7 +100,9 @@ export const deleteCategory = async (
       { categoryId: category._id },
       { isDeleted: true, isAvailable: false },
     );
+    const rId = category.restaurantId.toString();
     await category.deleteOne();
+    await invalidateMenuCache(rId);
 
     sendSuccess(res, "Category deleted");
   } catch (err) {
@@ -137,6 +142,7 @@ export const createMenuItem = async (
       slug,
       ...rest,
     });
+    await invalidateMenuCache(restaurantId);
 
     sendSuccess(res, "Menu item created", { item }, 201);
   } catch (err) {
@@ -369,6 +375,7 @@ export const createMenuCombo = async (
       mainItemId,
       ...rest,
     });
+    await invalidateMenuCache(restaurantId);
 
     const populated = await MenuCombo.findById(combo._id)
       .populate({ path: "items.menuItemId" })
@@ -411,6 +418,7 @@ export const updateMenuCombo = async (
 
     Object.assign(combo, rest);
     await combo.save();
+    await invalidateMenuCache(combo.restaurantId.toString());
 
     const populated = await MenuCombo.findById(combo._id)
       .populate({ path: "items.menuItemId" })
@@ -441,6 +449,7 @@ export const deleteMenuCombo = async (
     combo.isDeleted = true;
     combo.isAvailable = false;
     await combo.save();
+    await invalidateMenuCache(combo.restaurantId.toString());
 
     sendSuccess(res, "Combo deleted");
   } catch (err) {
@@ -499,6 +508,7 @@ export const updateMenuItem = async (
     }
     Object.assign(item, rest);
     await item.save();
+    await invalidateMenuCache(item.restaurantId.toString());
 
     sendSuccess(res, "Menu item updated", { item });
   } catch (err) {
@@ -523,6 +533,7 @@ export const deleteMenuItem = async (
     item.isDeleted = true;
     item.isAvailable = false;
     await item.save();
+    await invalidateMenuCache(item.restaurantId.toString());
 
     sendSuccess(res, "Menu item deleted");
   } catch (err) {
@@ -546,6 +557,7 @@ export const toggleItemAvailability = async (
 
     item.isAvailable = req.body.isAvailable;
     await item.save();
+    await invalidateMenuCache(item.restaurantId.toString());
 
     sendSuccess(res, "Availability updated", { item });
   } catch (err) {

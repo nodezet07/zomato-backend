@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "kill:5000": "powershell -ExecutionPolicy Bypass -File scripts/kill-port-5000.ps1",
+    "dev:fresh": "npm run kill:5000 && npm run dev",
     "build": "tsc",
     "render-build": "npm install --include=dev && npm run build",
     "start": "node dist/server.js",
@@ -31,6 +33,7 @@
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",
     "@types/bcryptjs": "^2.4.6",
+    "@types/compression": "^1.8.1",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
@@ -45,6 +48,7 @@
     "bcryptjs": "^3.0.3",
     "bullmq": "^5.77.1",
     "cloudinary": "^2.10.0",
+    "compression": "^1.8.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",

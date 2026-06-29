@@ -3,6 +3,8 @@ import Rider from "../models/rider.model.js";
 import RiderLocation from "../models/riderLocation.model.js";
 import Order from "../models/order.model.js";
 import User from "../models/user.model.js";
+import redisClient from "../config/redis.js";
+import { cacheGetOrSet, cacheDel } from "./cache.service.js";
 import { AppError } from "../utils/AppError.js";
 import {
   OrderStatus,
@@ -40,11 +42,16 @@ export function generateRiderCode(): string {
 }
 
 export async function getRiderByUserId(userId: string) {
-  const rider = await Rider.findOne({ userId });
-  if (!rider) {
-    throw new AppError("Rider profile not found. Register as a rider first", 404);
-  }
-  return rider;
+  const cacheKey = `cache:rider:userId:${userId}`;
+  const plain = await cacheGetOrSet(cacheKey, async () => {
+    const doc = await Rider.findOne({ userId });
+    if (!doc) {
+      throw new AppError("Rider profile not found. Register as a rider first", 404);
+    }
+    return doc.toObject();
+  }, 300); // cache for 5 minutes
+
+  return Rider.hydrate(plain);
 }
 
 export async function getRiderOrFail(riderId: string) {
@@ -229,6 +236,7 @@ export async function updateRiderStatus(
     rider.availabilityStatus = input.availabilityStatus;
   }
   await rider.save();
+  await cacheDel(`cache:rider:userId:${userId}`);
   return rider;
 }
 
@@ -277,6 +285,7 @@ export async function updateRiderProfile(
   }
 
   await Promise.all([user.save(), rider.save()]);
+  await cacheDel(`cache:rider:userId:${userId}`);
   return { rider, user: user.getPublicProfile() };
 }
 
@@ -297,21 +306,45 @@ export async function updateRiderLocation(
   heading?: number,
 ) {
   const rider = await getRiderByUserId(userId);
-  rider.currentLocation = buildGeoPoint(latitude, longitude);
-  rider.lastLocationUpdatedAt = new Date();
-  await rider.save();
+  const now = new Date();
 
-  await RiderLocation.create({
-    riderId: rider._id,
-    orderId: rider.currentOrderId,
-    latitude,
-    longitude,
-    speed,
-    heading,
-    recordedAt: new Date(),
-  });
+  // 1. Always update live tracking coordinates in Redis (extremely fast, <1ms)
+  if (redisClient.isOpen) {
+    try {
+      await redisClient.setEx(
+        `tracker:rider:${rider._id}:coords`,
+        300, // 5 min TTL
+        JSON.stringify({ latitude, longitude, speed, heading, updatedAt: now }),
+      );
+    } catch (e) {
+      // ignore Redis issues to avoid blocking driver pings
+    }
+  }
 
+  // 2. Only write location history to MongoDB if the rider is on an active delivery order
   if (rider.currentOrderId) {
+    // Only write coordinate history at most once every 60 seconds to save writes
+    const lastWrite = rider.lastLocationUpdatedAt ? new Date(rider.lastLocationUpdatedAt).getTime() : 0;
+    const shouldWriteHistory = (now.getTime() - lastWrite) > 60000;
+
+    if (shouldWriteHistory) {
+      rider.currentLocation = buildGeoPoint(latitude, longitude);
+      rider.lastLocationUpdatedAt = now;
+      await rider.save();
+      await cacheDel(`cache:rider:userId:${userId}`);
+
+      await RiderLocation.create({
+        riderId: rider._id,
+        orderId: rider.currentOrderId,
+        latitude,
+        longitude,
+        speed,
+        heading,
+        recordedAt: now,
+      });
+    }
+
+    // Always update active order document and broadcast to sockets for customer UI updates
     const order = await Order.findByIdAndUpdate(
       rider.currentOrderId,
       { riderLocation: { latitude, longitude } },
@@ -328,21 +361,33 @@ export async function updateRiderLocation(
       });
       emitRiderLocationUpdate(order, latitude, longitude, heading);
     }
+  } else {
+    // Idle rider: update database only if it's been more than 5 minutes
+    const lastWrite = rider.lastLocationUpdatedAt ? new Date(rider.lastLocationUpdatedAt).getTime() : 0;
+    if ((now.getTime() - lastWrite) > 300000) {
+      rider.currentLocation = buildGeoPoint(latitude, longitude);
+      rider.lastLocationUpdatedAt = now;
+      await rider.save();
+      await cacheDel(`cache:rider:userId:${userId}`);
+    }
   }
 
   return rider;
 }
 
 export async function listAvailableOrders() {
-  return Order.find({
-    orderStatus: OrderStatus.READY_FOR_PICKUP,
-    $or: [{ riderId: { $exists: false } }, { riderId: null }],
-  })
-    .sort({ createdAt: 1 })
-    .populate("restaurantId", "restaurantName logo slug latitude longitude address phone")
-    .populate("customerId", "fullName mobile")
-    .limit(50)
-    .lean();
+  const cacheKey = "cache:orders:available";
+  return cacheGetOrSet(cacheKey, async () => {
+    return Order.find({
+      orderStatus: OrderStatus.READY_FOR_PICKUP,
+      $or: [{ riderId: { $exists: false } }, { riderId: null }],
+    })
+      .sort({ createdAt: 1 })
+      .populate("restaurantId", "restaurantName logo slug latitude longitude address phone")
+      .populate("customerId", "fullName mobile")
+      .limit(50)
+      .lean();
+  }, 2); // cache list for 2 seconds
 }
 
 export async function acceptOrder(userId: string, orderId: string) {
@@ -406,6 +451,9 @@ export async function acceptOrder(userId: string, orderId: string) {
     throw new AppError("Complete your current delivery before accepting a new order", 400);
   }
 
+  await cacheDel(`cache:rider:userId:${userId}`);
+  await cacheDel("cache:orders:available");
+
   const populated = await getOrderOrFail(orderId);
   emitDeliveryClaimed(populated._id.toString(), populated.orderNumber);
   broadcastOrderEvent(populated, SocketEvents.RIDER_ASSIGNED);
@@ -437,6 +485,8 @@ export async function rejectOrder(userId: string, orderId: string, reason?: stri
     : RiderAvailability.OFFLINE;
 
   await Promise.all([order.save(), rider.save()]);
+  await cacheDel(`cache:rider:userId:${userId}`);
+  await cacheDel("cache:orders:available");
   emitOrderStatusChange(order);
   return order;
 }
@@ -509,6 +559,7 @@ export async function completeDelivery(userId: string, orderId: string) {
     : RiderAvailability.OFFLINE;
 
   await Promise.all([order.save(), rider.save()]);
+  await cacheDel(`cache:rider:userId:${userId}`);
   const { recordOrderFinancialsOnDelivery } = await import("./finance.service.js");
   await recordOrderFinancialsOnDelivery(orderId);
   await clearLiveRiderLocation(orderId);
@@ -560,5 +611,6 @@ export async function approveRiderDev(riderId: string) {
   const rider = await getRiderOrFail(riderId);
   rider.verificationStatus = VerificationStatus.APPROVED;
   await rider.save();
+  await cacheDel(`cache:rider:userId:${rider.userId.toString()}`);
   return rider;
 }

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { createRestaurantSchema } from "./restaurant.validator.js";
 
 export const adminLoginSchema = z.object({
   email: z.string().email(),
@@ -22,4 +23,11 @@ export const approveRefundSchema = z.object({
 export const rejectRefundSchema = z.object({
   reason: z.string().min(3).max(500),
   resolution: z.string().max(1000).optional(),
+});
+
+export const adminCreateRestaurantSchema = createRestaurantSchema.extend({
+  ownerEmail: z.string().email(),
+  ownerFullName: z.string().min(2).max(100),
+  ownerMobile: z.string().regex(/^[0-9]{10}$/).optional(),
+  autoApprove: z.boolean().optional().default(true),
 });

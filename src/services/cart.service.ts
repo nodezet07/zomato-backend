@@ -49,10 +49,13 @@ export async function recalculateCart(cart: InstanceType<typeof Cart>) {
   let subtotal = 0;
   let taxAmount = 0;
 
+  const itemIds = cart.items.map((line) => line.menuItemId);
+  const menuItems = await MenuItem.find({ _id: { $in: itemIds } }).lean();
+  const taxMap = new Map(menuItems.map((item) => [item._id.toString(), item.taxPercentage ?? 5]));
+
   for (const line of cart.items) {
     subtotal += line.total;
-    const menuItem = await MenuItem.findById(line.menuItemId);
-    const taxPct = menuItem?.taxPercentage ?? 5;
+    const taxPct = taxMap.get(line.menuItemId.toString()) ?? 5;
     taxAmount += (line.total * taxPct) / 100;
   }
 

@@ -1,6 +1,7 @@
 import { Response, NextFunction } from "express";
 import { AuthRequest } from "../types/auth.types.js";
 import { sendSuccess } from "../utils/apiResponse.js";
+import { cacheGetOrSet } from "../services/cache.service.js";
 import {
   parseAnalyticsRange,
   getSalesAnalytics,
@@ -82,19 +83,25 @@ export const summary = async (
 ) => {
   try {
     const range = rangeFromQuery(req.query);
-    const [sales, orderStats, userStats, deliveryStats] = await Promise.all([
-      getSalesAnalytics(range),
-      getOrderAnalytics(range),
-      getUserAnalytics(range),
-      getDeliveryAnalytics(range),
-    ]);
-    sendSuccess(res, "Analytics summary", {
-      period: range,
-      sales,
-      orders: orderStats,
-      users: userStats,
-      delivery: deliveryStats,
-    });
+    const cacheKey = `cache:analytics:summary:${range.from.getTime()}:${range.to.getTime()}`;
+
+    const data = await cacheGetOrSet(cacheKey, async () => {
+      const [sales, orderStats, userStats, deliveryStats] = await Promise.all([
+        getSalesAnalytics(range),
+        getOrderAnalytics(range),
+        getUserAnalytics(range),
+        getDeliveryAnalytics(range),
+      ]);
+      return {
+        period: range,
+        sales,
+        orders: orderStats,
+        users: userStats,
+        delivery: deliveryStats,
+      };
+    }, 300); // cache for 5 minutes
+
+    sendSuccess(res, "Analytics summary", data);
   } catch (err) {
     next(err);
   }

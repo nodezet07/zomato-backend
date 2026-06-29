@@ -76,9 +76,11 @@ export async function searchFoodItems(query: {
   if (query.restaurantId) {
     filter.restaurantId = query.restaurantId;
   } else {
-    const approvedIds = await Restaurant.find({
-      ...publicRestaurantFilter(),
-    }).distinct("_id");
+    const approvedIds = await cacheGetOrSet("cache:restaurants:approved_ids", async () => {
+      return Restaurant.find({
+        ...publicRestaurantFilter(),
+      }).distinct("_id");
+    }, 1800); // cache for 30 minutes
     filter.restaurantId = { $in: approvedIds };
   }
 

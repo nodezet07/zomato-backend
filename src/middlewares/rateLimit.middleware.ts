@@ -4,7 +4,20 @@ import config from "../config/config.js";
 
 const standardHeaders = { standardHeaders: true, legacyHeaders: false };
 
-function limiter(windowMs: number, max: number, message: string) {
+function isRiderApiRoute(req: Request): boolean {
+  const path = req.originalUrl.split("?")[0] ?? "";
+  if (path.startsWith("/api/v1/riders")) return true;
+  // Rider app polls route/tracking during active delivery
+  if (req.method === "GET" && path.startsWith("/api/v1/orders/track/")) return true;
+  return false;
+}
+
+function limiter(
+  windowMs: number,
+  max: number,
+  message: string,
+  skip?: (req: Request) => boolean,
+) {
   if (config.NODE_ENV === "test" || config.NODE_ENV === "development") {
     return (_req: Request, _res: Response, next: NextFunction) => next();
   }
@@ -12,15 +25,17 @@ function limiter(windowMs: number, max: number, message: string) {
     windowMs,
     max,
     message: { success: false, message },
+    skip: skip ?? (() => false),
     ...standardHeaders,
   });
 }
 
-/** General API traffic per IP */
+/** General API traffic per IP — rider routes exempt (GPS pings every ~15s) */
 export const apiRateLimiter = limiter(
   config.RATE_LIMIT_API_WINDOW_MS,
   config.RATE_LIMIT_API_MAX,
   "Too many requests, please try again later",
+  isRiderApiRoute,
 );
 
 /** Login / register / token refresh */

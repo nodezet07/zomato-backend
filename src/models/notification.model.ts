@@ -35,6 +35,7 @@ const notificationSchema = new Schema<INotificationDocument>(
 );
 
 notificationSchema.index({ userId: 1, isRead: 1, sentAt: -1 });
+notificationSchema.index({ userId: 1, sentAt: -1 });
 
 const Notification: Model<INotificationDocument> =
   mongoose.model<INotificationDocument>("Notification", notificationSchema);
